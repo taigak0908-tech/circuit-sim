@@ -403,7 +403,9 @@
   async function applyOsmWidth(seq) {
     const tr = S.tr, mid = trackToLatLngs(tr)[tr.N >> 1];
     const w = await fetchOsmWidth(mid.lat, mid.lng);
-    if (w == null || seq !== S.seq || S.wTouched || S.tr !== tr) return;   // 取れない・古い応答・もう触った・区間が変わった
+    /* 取れない・古い応答・幅をもう触った・区間が変わった、に加えて自分のラインを調整済みなら使わない。
+       応答は最大 15 秒遅れるので、その間に調整されていると setWidth → rebuildTrack が params を既定値に戻して調整が消える */
+    if (w == null || seq !== S.seq || S.wTouched || S.paramsEdited || S.tr !== tr) return;
     const v = setWidth(w);
     showMsg('地図データの幅 ' + v.toFixed(1) + ' m を初期値にしました', { info: true });
   }

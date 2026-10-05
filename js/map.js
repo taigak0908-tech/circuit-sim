@@ -45,6 +45,7 @@ async function fetchRoute(points) {
     throw new Error('route');
   }
   const json = r.json;
+  if (r.ok && !json) throw new Error('route');   // 200 なのに本文が読めない（本文の読み取り中のタイムアウトなど）は通信失敗。道が無いのではない
   if (!r.ok) throw new Error(json && /^(NoSegment|NoRoute|InvalidQuery)/.test(json.code) ? 'noroute' : 'route');
   if (!json || json.code !== 'Ok' || !json.routes || !json.routes[0]) throw new Error('noroute');
   const route = json.routes[0];

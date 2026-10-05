@@ -65,6 +65,10 @@ test('fetchRoute: 429・500・JSON でない本文・通信失敗は route', asy
   assert.equal(await withFetch(async () => { throw new TypeError('net'); }, () => errMsg(fetchRoute(P))), 'route');
 });
 
+test('fetchRoute: 200 でも本文が JSON として読めなければ route（noroute にしない）', async () => {
+  assert.equal(await withFetch(reply(200, undefined), () => errMsg(fetchRoute(P))), 'route');
+});
+
 test('fetchRoute: 15秒で打ち切る（signal が abort されると route）', async () => {
   let sig = null;
   const hang = (url, opt) => new Promise((_, rej) => { sig = opt.signal; opt.signal.addEventListener('abort', () => rej(new Error('aborted'))); });
@@ -91,7 +95,7 @@ test('fetchOsmWidth: Overpass に data= で POST し、数値を返す／失敗�
   const ok = async (url, opt) => { seen = { url, opt }; return { ok: true, json: async () => ({ elements: [{ tags: { lanes: '2' } }] }) }; };
   assert.equal(await withFetch(ok, () => fetchOsmWidth(36.74, 139.5)), 6);
   assert.ok(seen.url.includes('overpass-api.de') && seen.opt.method === 'POST');
-  assert.ok(decodeURIComponent(seen.opt.body).startsWith('data=[out:json];') || decodeURIComponent(seen.opt.body).includes('way(around:8,36.74,139.5)[highway]'));
+  assert.equal(decodeURIComponent(seen.opt.body), 'data=[out:json][timeout:10];way(around:8,36.74,139.5)[highway];out tags;');
   assert.equal(await withFetch(reply(504, undefined), () => fetchOsmWidth(1, 2)), null);
   assert.equal(await withFetch(async () => { throw new Error('net'); }, () => fetchOsmWidth(1, 2)), null);
 });
