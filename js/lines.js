@@ -186,10 +186,10 @@ function searchFastestSync(tr, car, vEntry) {
 const SLICE_MS = 20;   // 非同期版が画面に制御を返す間隔（ms）。1 評価は最長でも十数 ms
 
 /* 非同期版。同じ探索を、SLICE_MS ごとに画面へ制御を返しながら進める（結果は同期版と同じ）。
-   opts = {onProgress(done,total), signal}。onProgress はコーナー1つ分ごと。
+   opts = {onProgress(done,total), signal, sliceMs}。onProgress はコーナー1つ分ごと。sliceMs は制御を返す間隔（既定 SLICE_MS。テストでは 0 にして毎評価ごとに返す）。
    各コーナー処理の前と制御を返した直後に signal.aborted を見て、立っていれば {aborted:true} を返す */
 async function searchFastest(tr, car, vEntry, opts) {
-  const { onProgress, signal } = opts || {};
+  const { onProgress, signal, sliceMs = SLICE_MS } = opts || {};
   const C = tr.corners.length;
   if (C === 0) return searchFastestSync(tr, car, vEntry);
   const total = SEARCH_PASSES * C;
@@ -201,7 +201,7 @@ async function searchFastest(tr, car, vEntry, opts) {
       const g = bestForCornerGen(tr, car, vEntry, params, c);
       let r, t0 = Date.now();
       while (!(r = g.next()).done) {
-        if (Date.now() - t0 >= SLICE_MS) {
+        if (Date.now() - t0 >= sliceMs) {
           await new Promise(res => setTimeout(res, 0));
           if (signal && signal.aborted) return { aborted: true };
           t0 = Date.now();

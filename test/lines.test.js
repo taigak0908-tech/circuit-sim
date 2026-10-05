@@ -210,3 +210,24 @@ test('完全な直線 200 m（コーナー0）でも lineOIO の n に NaN が�
   const r = runLineN(tr, deriveCar(GRB), V_ENTRY, line);
   assert.ok(Number.isFinite(r.sim.time) && r.sim.time > 0, 'time=' + r.sim.time);
 });
+
+test('時間分割（sliceMs: 0 で毎評価ごとに制御を返す）でも結果は同期版と一致する', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const r = await searchFastest(tr, car, V_ENTRY, { sliceMs: 0 });
+  const sync = searchFastestSync(tr, car, V_ENTRY);
+  assert.ok(Math.abs(r.time - sync.time) < 1e-9);
+  assert.deepEqual(r.params, sync.params);
+});
+
+test('時間分割の途中（コーナー処理の最中に制御を返した直後）で中断すると {aborted:true}、onProgress は呼ばれない', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  /* aborted の読み取り回数で中断を再現する: 1回目（コーナー処理の前）は false、2回目（最初の await の直後）から true */
+  let reads = 0, progress = 0;
+  const signal = { get aborted() { return ++reads > 1; } };
+  const r = await searchFastest(tr, car, V_ENTRY, { sliceMs: 0, signal, onProgress: () => { progress++; } });
+  assert.deepEqual(r, { aborted: true });
+  assert.equal(reads, 2, 'aborted を読んだ回数');
+  assert.equal(progress, 0);
+});
