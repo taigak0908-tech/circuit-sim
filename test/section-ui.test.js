@@ -37,7 +37,7 @@ test('判定: 最速と中央の差・最も縮んだコーナーを文にする
   const links = t.match(/<a class="btn-sm"[^>]*href="[^"]+"/g) || [];
   assert.equal(links.length, tr.corners.length);
   tr.corners.forEach((k, c) => assert.ok(links[c].includes('href="' + SR.cornerLinkUrl(k, R.center.sim.v[k.i0], tr.W) + '"'), links[c]));
-  assert.ok(t.includes('幅 8〜16 m'));
+  assert.ok(t.includes('半径 5〜200 m・幅 3〜16 m・入口速度 20〜220 km/h'));
 });
 
 test('引き継ぎ URL: R・角度（5° 刻み）・幅・入口速度（km/h 整数）を index.html へ渡す', () => {

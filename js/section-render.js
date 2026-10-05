@@ -63,7 +63,7 @@ const SectionRender = (function () {
 
   /* ---------- 1コーナー比較（index.html）への引き継ぎ ----------
      コーナー k・そのコーナー入口での中央ラインの速度 vMs（m/s）・区間の幅 W から URL を作る。
-     index.html 側で各スライダーの範囲（幅は 8 m 以上など）に収める。角度は 5° 刻み、速度は km/h の整数 */
+     index.html 側で各スライダーの範囲（幅は 3〜16 m など）に収める。角度は 5° 刻み、速度は km/h の整数 */
   function cornerLinkUrl(k, vMs, W) {
     return 'index.html?R=' + Math.round(k.rMin) + '&angDeg=' + Math.round(k.angDeg / 5) * 5 + '&W=' + +(+W).toFixed(1) + '&vIn=' + Math.round(vMs * 3.6);
   }
@@ -88,7 +88,7 @@ const SectionRender = (function () {
       const t = results[s.id].sim.time;
       return '<td colspan="2" class="t' + cls(s.id) + '">' + t.toFixed(2) + ' <span class="sub">' + (s.id === 'center' ? '基準' : sgn(t - t0, 2)) + '</span></td>';
     }).join('') + '<td></td></tr></tbody></table>';
-    if (tr.corners.length) h += '<p class="hint">「1コーナーで詳しく」は、そのコーナーの条件（入口の速度は中央ライン）を 1コーナー比較へ渡して新しいタブで開きます。1コーナー比較は半径 15〜200 m・幅 8〜16 m・入口速度 60〜220 km/h の範囲なので、外れている値は端の値になります。</p>';
+    if (tr.corners.length) h += '<p class="hint">「1コーナーで詳しく」は、そのコーナーの条件（入口の速度は中央ライン）を 1コーナー比較へ渡して新しいタブで開きます。1コーナー比較は半径 5〜200 m・幅 3〜16 m・入口速度 20〜220 km/h の範囲なので、外れている値は端の値になります。</p>';
     return h;
   }
 

@@ -377,12 +377,12 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
       ['pitchGrad', 'ピッチ率', '°/G', 0.5, 4, 0.1, 1]
     ],
     corner: [
-      ['R', 'コーナー半径（コース中央）', 'm', 15, 200, 1, 0],
+      ['R', 'コーナー半径（コース中央）', 'm', 5, 200, 1, 0],
       ['angDeg', '曲がる角度', '°', 30, 180, 5, 0],
-      ['W', 'コース幅', 'm', 8, 16, 0.5, 1],
+      ['W', 'コース幅', 'm', 3, 16, 0.5, 1],
       ['Ls', '進入ストレートの長さ', 'm', 60, 300, 10, 0],
       ['Le', '立ち上がりストレートの長さ', 'm', 50, 600, 10, 0],
-      ['vIn', '区間に入るときの速度', 'km/h', 60, 220, 5, 0]
+      ['vIn', '区間に入るときの速度', 'km/h', 20, 220, 5, 0]
     ],
     my: [
       ['apex', 'エイペックスの位置（コーナーの何%地点か）', '%', 20, 85, 1, 0],
@@ -412,7 +412,7 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
      各スライダーの範囲に収め、処理したらアドレスから消す（再読み込みで条件が固定されないように） */
   (function applyUrlParams() {
     let q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
-    const lim = { R: [15, 200, 1], angDeg: [30, 180, 5], W: [8, 16, 0.5], vIn: [60, 220, 5] };
+    const lim = { R: [5, 200, 1], angDeg: [30, 180, 5], W: [3, 16, 0.5], vIn: [20, 220, 5] };   /* 峠のきついコーナー・狭い道・低い入口速度も受ける（FIELDS.corner と同じ範囲） */
     let got = false;
     for (const k in lim) {
       const raw = q.get(k); if (raw == null || raw.trim() === '') continue;
