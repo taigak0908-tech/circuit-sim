@@ -58,6 +58,11 @@ h2{font-size:15px;font-weight:700;line-height:1.4;text-wrap:balance}
 .seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
 .btn{padding:8px 12px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .btn:hover, .seg button:hover{filter:brightness(1.06)}
+.tabs{display:flex;gap:4px}
+.tabs a{font-size:13px;font-weight:700;color:var(--ink2);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:5px 16px;background:var(--surface)}
+.tabs a[aria-current=page]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.tabs a:hover{filter:brightness(1.06)}
+.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* 結論 */
 .verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 32px;align-items:center;border-top:3px solid var(--ink);padding-top:14px}
@@ -135,6 +140,7 @@ td.t{font-weight:700;font-size:15px}
 
 <div class="wrap">
   <header style="display:grid;gap:6px">
+    <nav class="tabs" aria-label="モード切替"><a href="index.html" aria-current="page">1コーナー</a><a href="section.html">区間</a></nav>
     <h1>コーナーライン比較シム</h1>
     <p class="lede">コーナー1つを5通りのラインで走らせ、荷重移動を含めてボトム速度・立ち上がり速度・区間タイムの差を計算します。左の数値を動かすと、その場で全部計算し直します。</p>
   </header>
