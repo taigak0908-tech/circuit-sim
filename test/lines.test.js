@@ -1,7 +1,7 @@
 const { test, assert } = require('./harness');
 const { deriveCar } = require('../js/physics');
 const { buildTrackFromPath } = require('../js/track');
-const { solveLineN, finishLineN, centerLine, lineOIO, runLineN } = require('../js/lines');
+const { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats } = require('../js/lines');
 const { course, toLatLngs, SHAPE } = require('./fixtures/courses');
 
 /* index.html の CAR_PRESETS.grb.v（スバル インプレッサ WRX STI）からコピー */
@@ -73,4 +73,80 @@ test('centerLine は n=0 で中心線そのもの、finishLineN は距離と曲�
   const [L, R] = tr.corners;
   assert.ok(c.kap[Math.round((L.i0 + L.i1) / 2)] > 0.02 && c.kap[Math.round((R.i0 + R.i1) / 2)] < -0.02);
   assert.ok(finishLineN(tr, new Float64Array(tr.N)).length === c.length);
+});
+
+/* ---- Task 5: 型ライン・自分のライン・コーナー別集計 ---- */
+const innerOf = (tr, c) => (c.dir === 'L' ? tr.bLo : tr.bHi);
+
+test('インベタは各コーナーの i0..i1 で |n - 内側境界| < 0.05', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  assert.ok(tr.corners.length >= 2);
+  const line = lineInside(tr);
+  inRange(tr, line.n, 'inside');
+  for (const c of tr.corners) {
+    const inner = innerOf(tr, c);
+    for (let i = c.i0; i <= c.i1; i++) assert.ok(Math.abs(line.n[i] - inner) < 0.05, 'corner ' + c.no + ' i=' + i + ' n=' + line.n[i] + ' inner=' + inner);
+  }
+});
+
+test('コーナーが先頭(i0=0)・末尾(i1=N-1)にあってもピン生成で例外が出ない', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const N = tr.N;
+  const variants = [
+    [{ no: 1, dir: 'L', i0: 0, i1: 20, s0: 0, s1: 20 * tr.ds, rMin: 30, angDeg: 90 }],
+    [{ no: 1, dir: 'R', i0: N - 21, i1: N - 1, s0: 0, s1: 0, rMin: 30, angDeg: 90 }],
+    [{ no: 1, dir: 'L', i0: 0, i1: N - 1, s0: 0, s1: 0, rMin: 30, angDeg: 90 }],
+    [],
+  ];
+  for (const corners of variants) {
+    const t2 = Object.assign({}, tr, { corners });
+    const pins = pinsFromParams(t2, defaultParams(t2, 'late'));
+    assert.equal(pins.length, N);
+    const line = lineLate(t2);
+    inRange(t2, line.n, 'edge');
+  }
+  /* コーナー0個は全部 NaN */
+  const none = pinsFromParams(Object.assign({}, tr, { corners: [] }), []);
+  assert.ok(none.every(Number.isNaN));
+  /* params が不足していればそのコーナーはピン無し */
+  const short = pinsFromParams(tr, []);
+  assert.ok(short.every(Number.isNaN));
+});
+
+test('cornerStats の tCorner の合計 ≤ sim.time（各コーナーの vMin は正）', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const r = runLineN(tr, car, V_ENTRY, lineLate(tr));
+  const st = cornerStats(tr, r.sim);
+  assert.equal(st.length, tr.corners.length);
+  let sum = 0;
+  st.forEach((x, c) => {
+    const k = tr.corners[c];
+    assert.ok(x.vMin > 0 && x.tCorner > 0, 'corner ' + c);
+    assert.equal(x.vMin, Math.min(...Array.from(r.sim.v.slice(k.i0, k.i1 + 1))));
+    sum += x.tCorner;
+  });
+  assert.ok(sum <= r.sim.time + 1e-9, 'sum ' + sum + ' / time ' + r.sim.time);
+});
+
+test('late の apex ピンは i0+0.65*(i1-i0) に内側いっぱい、入口 i0..i0+10m は外側', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const pins = pinsFromParams(tr, defaultParams(tr, 'late'));
+  assert.equal(pins.length, tr.N);
+  for (const c of tr.corners) {
+    const ia = Math.round(c.i0 + 0.65 * (c.i1 - c.i0));
+    const inner = innerOf(tr, c), outer = c.dir === 'L' ? tr.bHi : tr.bLo;
+    assert.ok(Math.abs(pins[ia] - inner) < 1e-9, 'apex corner ' + c.no + ' pin=' + pins[ia]);
+    const iEnd = Math.min(c.i0 + Math.round(10 / tr.ds), ia - 2);
+    for (let i = c.i0; i <= iEnd; i++) assert.ok(Math.abs(pins[i] - outer) < 1e-9, 'hold corner ' + c.no + ' i=' + i);
+  }
+  /* 自車線（bHi=0）では右コーナーの内側は 0（中心） */
+  const lane = sTrack({ W: 3, mode: 'lane' });
+  const pl = pinsFromParams(lane, [{ apex: 0.5, inside: 1, hold: 0 }, { apex: 0.5, inside: 1, hold: 0 }]);
+  const R = lane.corners[1];
+  assert.ok(Math.abs(pl[Math.round((R.i0 + R.i1) / 2)] - 0) < 1e-9);
+  /* lineCustom は pinsFromParams を通して解く */
+  const lc = lineCustom(tr, defaultParams(tr, 'late'));
+  assert.equal(lc.n.length, tr.N);
+  inRange(tr, lc.n, 'custom');
 });

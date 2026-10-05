@@ -82,4 +82,55 @@ function lineOIO(tr) { return solveLineN(tr, new Float64Array(tr.N).fill(NaN)); 
 /* ラインを走らせる */
 function runLineN(tr, car, vEntry, line) { return { line, sim: _phys.simulate(tr, line, car, vEntry) }; }
 
-if (typeof module !== 'undefined') module.exports = { solveLineN, finishLineN, centerLine, lineOIO, runLineN };
+/* コーナーごとのパラメータからピン配列を作る。
+   params[c] = {apex:0..1（コーナー内の位置）, inside:0..1（内側への寄せ具合）, hold: m（入口で外側に居続ける距離）}
+   内側 = 左コーナーは bLo 側・右コーナーは bHi 側、外側はその反対。params[c] が無いコーナーはピン無し */
+function pinsFromParams(tr, params) {
+  const N = tr.N, pins = new Float64Array(N).fill(NaN);
+  for (let c = 0; c < tr.corners.length; c++) {
+    const p = params && params[c];
+    if (!p) continue;
+    const k = tr.corners[c], left = k.dir === 'L';
+    const inner = (left ? tr.bLo : tr.bHi) * p.inside, outer = left ? tr.bHi : tr.bLo;
+    const ia = _phys.clamp(Math.round(k.i0 + p.apex * (k.i1 - k.i0)), 0, N - 1);
+    if (p.hold > 0) {
+      const iEnd = Math.min(k.i0 + Math.round(p.hold / tr.ds), ia - 2);
+      for (let i = Math.max(k.i0, 0); i <= iEnd; i++) pins[i] = outer;
+    }
+    pins[ia] = inner;
+  }
+  return pins;
+}
+
+/* 型ラインの既定パラメータ。今は 'late'（レイトエイペックス）のみ。
+   他の kind は将来の拡張点で、今は late と同じものを返す */
+function defaultParams(tr, kind) {
+  return tr.corners.map(() => ({ apex: 0.65, inside: 1, hold: 10 }));
+}
+
+/* 全コーナーをレイトエイペックスで走るライン */
+function lineLate(tr) { return solveLineN(tr, pinsFromParams(tr, defaultParams(tr, 'late'))); }
+
+/* 全コーナーの i0..i1 を内側いっぱいに通るライン（インベタ）。コーナー間は曲率最小でつなぐ */
+function lineInside(tr) {
+  const pins = new Float64Array(tr.N).fill(NaN);
+  for (const k of tr.corners) {
+    const inner = k.dir === 'L' ? tr.bLo : tr.bHi;
+    for (let i = k.i0; i <= k.i1; i++) pins[i] = inner;
+  }
+  return solveLineN(tr, pins);
+}
+
+/* 自分で指定したパラメータで作るライン */
+function lineCustom(tr, params) { return solveLineN(tr, pinsFromParams(tr, params)); }
+
+/* コーナーごとの最低速度（m/s）と通過タイム（s）。km/h 換算は画面側 */
+function cornerStats(tr, sim) {
+  return tr.corners.map(k => {
+    let vMin = Infinity;
+    for (let i = k.i0; i <= k.i1; i++) if (sim.v[i] < vMin) vMin = sim.v[i];
+    return { vMin, tCorner: sim.t[k.i1] - sim.t[k.i0] };
+  });
+}
+
+if (typeof module !== 'undefined') module.exports = { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats };
