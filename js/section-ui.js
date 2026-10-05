@@ -33,6 +33,7 @@
     manualPts: [],       // 手動モードの点列
     manual: false,       // いま手動モードの点を使っているか
     latlngs: null, tr: null,
+    trFrom: null,        // S.tr を作ったときの S.latlngs（同じ配列なら経路は変わっていない）
     W: 6, laneMode: 'full', vIn: 60,
     wTouched: false,     // 幅を自分で決めたか（スライダー・計測・保存の読み込み）。false の間だけ OSM タグの幅を初期値に使う
     measureP: null,      // 幅の計測の1点目
@@ -49,7 +50,8 @@
     results: null,       // {[系列id]: {line, sim, stats}}
     visible: new Set(['center', 'my', 'fast']),   // 表示中の系列
     failCount: 0,
-    seq: 0               // 経路取得の通し番号（古い応答を捨てる）
+    seq: 0,              // 経路取得の通し番号（古い応答を捨てる）
+    pendingRestore: null // 保存区間の復元待ち {params, paramsEdited, total}。区間ができたとき（再試行で後からできても）当てて消す
   };
 
   if (typeof L === 'undefined') {
@@ -320,7 +322,10 @@
   /* 選択中のコーナーの値をスライダーに映す。rebuild=true でコーナー一覧も作り直す */
   function syncMyUI(rebuild) {
     const tr = S.tr, sel = $('my-corner'), has = !!(tr && tr.corners.length);
-    if (rebuild) sel.innerHTML = has ? tr.corners.map((k, c) => '<option value="' + c + '">' + cornerLabel(k) + '</option>').join('') : '';
+    if (rebuild) {
+      sel.innerHTML = has ? tr.corners.map((k, c) => '<option value="' + c + '">' + cornerLabel(k) + '</option>').join('') : '';
+      if (has && S.selCorner >= 0 && S.selCorner < tr.corners.length) sel.value = String(S.selCorner);   // 幅を変えても選んでいたコーナーを保つ
+    }
     ['my-corner', 'my-apex', 'my-inside', 'my-hold'].forEach(id => { $(id).disabled = !has; });
     const f = fastCurrent();
     $('my-reset').disabled = !(has && f && f.params);
@@ -343,7 +348,13 @@
   }
 
   /* ---------- 経路 → tr → コーナー表示 ---------- */
-  /* tr だけ作り直す（幅・範囲を変えたときは経路を取り直さない）。fit=true で地図を経路に合わせる */
+  /* 新旧の tr でコーナーの並び（個数と各 i0/i1）が同じか */
+  function sameCorners(a, b) {
+    return !!(a && b && a.corners.length === b.corners.length && a.corners.every((k, c) => k.i0 === b.corners[c].i0 && k.i1 === b.corners[c].i1));
+  }
+  /* tr だけ作り直す（幅・範囲を変えたときは経路を取り直さない）。fit=true で地図を経路に合わせる。
+     経路が同じ（S.latlngs が同じ配列）でコーナーの並びも同じなら、自分のライン・調整済みの印・選んだコーナーを保つ。
+     経路が変わったとき（rebuildRoute・手動の線・保存の読み込み）は既定値に戻す */
   function rebuildTrack(fit) {
     if (!S.latlngs) return;
     const tr = buildTrackFromPath(S.latlngs, { W: S.W, mode: S.laneMode });
@@ -354,8 +365,9 @@
       showMsg('区間は100m〜5kmにしてください（いま ' + Math.round(tr.total) + ' m）');
       return;
     }
-    S.tr = tr; S.results = null;   // 古い tr の結果を参照する隙間を作らない
-    S.params = defaultParams(tr, 'late'); S.paramsEdited = false; S.selCorner = -1;
+    const keep = S.trFrom === S.latlngs && sameCorners(S.tr, tr);
+    S.tr = tr; S.trFrom = S.latlngs; S.results = null;   // 古い tr の結果を参照する隙間を作らない
+    if (!keep) { S.params = defaultParams(tr, 'late'); S.paramsEdited = false; S.selCorner = -1; }
     stopPlay(); S.scrub = 0; syncMyUI(true);
     schedule();
     api.setRoute(S.latlngs);
@@ -366,12 +378,12 @@
     if (n === 0) showMsg('ほぼ直線です', { info: true }); else showMsg(null);
   }
 
-  /* 経路を取って区間を作り直す。tr ができたら true（保存の読み込みが続きを判断する） */
+  /* 経路を取って区間を作り直す。tr ができたら true。保存区間の復元待ち（S.pendingRestore）があれば、成功したときに当てる */
   async function rebuildRoute() {
     const { start, end, vias } = S.points;
     if (!start || !end) return false;
     const seq = ++S.seq;
-    showMsg('経路を取得中…', { info: true });
+    showMsg(S.pendingRestore ? '保存した区間を読み込み中…（経路を取得しています）' : '経路を取得中…', { info: true });
     let r;
     try {
       r = await fetchRoute([start, ...vias, end]);
@@ -386,10 +398,23 @@
     if (seq !== S.seq) return false;
     S.failCount = 0; updateManualBtn();
     S.latlngs = r.latlngs;
-    rebuildTrack(true);
+    rebuildTrack(true);   // 地図を経路全体に合わせる
     if (!S.tr) return false;
+    applyPendingRestore();
     if (!S.wTouched) applyOsmWidth(seq);
     return true;
+  }
+
+  /* 保存区間の復元（openSaved が S.pendingRestore に置いたもの）を、いまの tr に当てて消す。
+     自分のラインはコーナー数が同じときだけ戻す（変わっていたら最速に任せる）。全長が 5% 以上違えば知らせる */
+  function applyPendingRestore() {
+    const p = S.pendingRestore; S.pendingRestore = null;
+    if (!p || !S.tr) return;
+    if (p.paramsEdited && Array.isArray(p.params) && p.params.length === S.tr.corners.length) {
+      S.params = p.params.map(q => Object.assign({}, q)); S.paramsEdited = true; syncMyUI(); schedule();
+    }
+    const now = S.tr.total;
+    if (p.total > 0 && Math.abs(now - p.total) / p.total >= 0.05) showMsg('道路データが変わっています（保存時 ' + Math.round(p.total) + ' m → いま ' + Math.round(now) + ' m）', { info: true });
   }
 
   /* 幅を m（0.1 刻み・3〜12 に丸め）でスライダーと S.W に入れ、tr を作り直す。実際に入れた値を返す */
@@ -404,7 +429,7 @@
     const tr = S.tr, mid = trackToLatLngs(tr)[tr.N >> 1];
     const w = await fetchOsmWidth(mid.lat, mid.lng);
     /* 取れない・古い応答・幅をもう触った・区間が変わった、に加えて自分のラインを調整済みなら使わない。
-       応答は最大 15 秒遅れるので、その間に調整されていると setWidth → rebuildTrack が params を既定値に戻して調整が消える */
+       （幅だけ変えても rebuildTrack は自分のラインを保つが、調整した幅の前提が黙って変わらないように使わない） */
     if (w == null || seq !== S.seq || S.wTouched || S.paramsEdited || S.tr !== tr) return;
     const v = setWidth(w);
     showMsg('地図データの幅 ' + v.toFixed(1) + ' m を初期値にしました', { info: true });
@@ -417,7 +442,7 @@
   }
 
   function clearAll() {
-    ++S.seq;
+    ++S.seq; S.pendingRestore = null;
     S.points = { start: null, end: null, vias: [] };
     S.manualPts = []; S.manual = false; S.wTouched = false;
     clearRouteView(); api.setMarkers(null); showMsg(null); setMode(null);
@@ -445,6 +470,7 @@
       return;
     }
     if (S.manual) { S.manual = false; clearRouteView(); }   // 手動の線を捨てて通常モードに戻る
+    S.pendingRestore = null;   // 点を動かしたら、読み込みに失敗した保存区間の復元はもう当てない
     if (m === 'start') S.points.start = p;
     else if (m === 'end') S.points.end = p;
     else S.points.vias.push(p);
@@ -460,7 +486,7 @@
   $('btn-measure').addEventListener('click', () => toggleMode('measure'));
   $('btn-manual').addEventListener('click', () => {
     if (S.mode === 'manual') { setMode(null); return; }
-    S.manualPts = []; S.manual = true; ++S.seq;     // 手動は新しい線から始める
+    S.manualPts = []; S.manual = true; ++S.seq; S.pendingRestore = null;   // 手動は新しい線から始める
     clearRouteView(); updateMarkers(); showMsg(null);
     setMode('manual');
   });
@@ -585,6 +611,7 @@
     const d = sectionStore.getSection(id);
     if (!d || !d.points) return;
     clearAll();   // 点・経路・結果を片付けて、幅の「触った」印も戻す
+    showMsg('保存した区間を読み込み中…', { info: true });   // 経路が描けたら rebuildTrack が消す（探索の進み具合は進捗バー）
     S.wTouched = true;   // 保存した幅を使う（OSM タグで上書きしない）
     S.W = Math.min(12, Math.max(3, +d.W || 6)); $('f-W').value = String(S.W); $('o-W').textContent = S.W.toFixed(1);
     S.laneMode = d.laneMode === 'lane' ? 'lane' : 'full';
@@ -594,21 +621,16 @@
     S.carP = Object.assign({}, CAR_PRESETS[S.preset] ? CAR_PRESETS[S.preset].v : d.carP);
     S.car = deriveCar(S.carP); $('f-preset').value = S.preset; $('f-drive').value = S.carP.drive;
     $('sec-name').value = d.name;
-    let ok;
+    /* 自分のラインと全長の警告は、区間ができたときに当てる（経路の取得に失敗しても、再試行で成功したときに当たる） */
+    S.pendingRestore = { params: Array.isArray(d.params) ? d.params.map(p => Object.assign({}, p)) : null, paramsEdited: !!d.paramsEdited, total: +d.total || 0 };
     if (d.manual) {
       S.manual = true; S.manualPts = (d.points.manual || []).map(p => ({ lat: p.lat, lng: p.lng })); updateMarkers();
-      if (S.manualPts.length < 2) { showMsg('保存された点が足りません'); return; }
-      useManualRoute(); api.fitRoute(); ok = !!S.tr;
+      if (S.manualPts.length < 2) { S.pendingRestore = null; showMsg('保存された点が足りません'); return; }
+      useManualRoute(); api.fitRoute(); applyPendingRestore();
     } else {
       S.points = { start: d.points.start, end: d.points.end, vias: (d.points.vias || []).slice() }; updateMarkers();
-      ok = await rebuildRoute();
+      await rebuildRoute();   // 成功すれば中で applyPendingRestore と地図合わせをする
     }
-    if (!ok || !S.tr) return;
-    if (d.paramsEdited && Array.isArray(d.params) && d.params.length === S.tr.corners.length) {   // コーナー数が変わっていたら最速に任せる
-      S.params = d.params.map(p => Object.assign({}, p)); S.paramsEdited = true; syncMyUI(); schedule();
-    }
-    const now = S.tr.total;
-    if (d.total > 0 && Math.abs(now - d.total) / d.total >= 0.05) showMsg('道路データが変わっています（保存時 ' + Math.round(d.total) + ' m → いま ' + Math.round(now) + ' m）', { info: true });
   }
   $('btn-save').addEventListener('click', saveCurrent);
   $('sec-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveCurrent(); } });
