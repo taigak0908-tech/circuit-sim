@@ -1,6 +1,7 @@
 /* ===== 区間モードの画面配線（状態機械・地図クリック・経路取得 → tr 構築 → 6本のライン計算 → 判定・表・グラフ・地図の線） =====
    HTML/SVG の組み立ては section-render.js（SectionRender）。ここは状態・DOM への反映・イベント。
-   最速探索と自分のラインの調整 UI は次のタスクで足す。 */
+   最速ラインは lines.js の searchFastest を条件が変わるたびに自動で走らせる（非同期・中断つき）。
+   自分のラインはコーナーごとのスライダーで調整し、位置スクラブで地図の車・グラフの縦線・G-G図・荷重カードが連動する。 */
 (function () {
   if (typeof document === 'undefined') return;
   const $ = id => document.getElementById(id);
@@ -15,6 +16,7 @@
     gry: { label: 'トヨタ GRヤリス (RZ)', v: { mass: 1350, ps: 272, mu: 1.10, wf: 59, h: 0.50, rs: 56, L: 2.560, tf: 1.535, tr: 1.565, cda: 0.73, cla: 0.10, rollGrad: 3.0, pitchGrad: 1.6, drive: 'AWD' } }
   };
   const MAX_VIAS = 5;
+  const FAST_DELAY = 250;   // ms。条件が動き続けている間（スライダーのドラッグ中など）は最速探索を始めない
   const HINTS = {
     start: '地図をクリックして始点を置きます',
     end: '地図をクリックして終点を置きます',
@@ -33,8 +35,13 @@
     W: 6, laneMode: 'full', vIn: 60,
     preset: 'grb', carP: Object.assign({}, CAR_PRESETS.grb.v), car: null,   // carP = 車のパラメータ、car = deriveCar の結果
     params: [],          // 自分のライン（コーナーごと {apex,inside,hold}）。tr ができるたび既定値に戻す
+    paramsEdited: false, // スライダーを触ったか。触っていなければ最速の探索が終わったとき自分のラインも最速に揃える
+    fast: null,          // 最速探索 {tr, car, vIn, ac(AbortController), timer, t0, params, res}。res は完了後の {line, sim, stats}
+    computeError: false, // compute の失敗メッセージを出している間 true（成功したら消す）
     sel: 'fast',         // 選択中の系列（地図で太く・表で強調）
     selCorner: -1,       // 表で選んだコーナーの添字
+    scrub: 0,            // 位置（点の添字）
+    playing: false,
     results: null,       // {[系列id]: {line, sim, stats}}
     visible: new Set(['center', 'my', 'fast']),   // 表示中の系列
     failCount: 0,
@@ -87,18 +94,62 @@
   }
   function clearRouteView() {
     S.latlngs = null; S.tr = null; S.results = null;
+    stopFast(); stopPlay(); S.scrub = 0; syncMyUI(true);
     api.setRoute(null); api.drawCorners([], null);
     renderAll();   // 結果が無いので判定・表・グラフ・地図の線を片付ける
     $('sec-info').textContent = '区間は未設定です';
   }
 
+  /* ---------- 最速探索（searchFastest）の管理 ---------- */
+  /* いまの条件（区間・車・進入速度）と同じ条件で始めた探索（探索中か完了済み）を返す。無ければ null */
+  function fastCurrent() { const f = S.fast; return f && f.tr === S.tr && f.car === S.car && f.vIn === S.vIn ? f : null; }
+  const fastRunning = () => { const f = fastCurrent(); return !!(f && !f.res); };
+  function cancelFast(f) { clearTimeout(f.timer); f.ac.abort(); }
+  function stopFast() { if (S.fast) cancelFast(S.fast); S.fast = null; showProgress(null); }
+  /* 進捗の表示。done == null で非表示（完了・中止）。コーナー0個は探索が一瞬なので出さない */
+  function showProgress(done, total) {
+    const bar = $('fast-progress'), st = $('fast-status'), f = S.fast;
+    if (done == null) {
+      bar.hidden = true;
+      st.textContent = f && f.res ? '最速を探索しました（' + ((f.t1 - f.t0) / 1000).toFixed(1) + ' 秒）' : '';
+      return;
+    }
+    if (!total) { bar.hidden = true; st.textContent = ''; return; }
+    bar.hidden = false; bar.max = total; bar.value = done;
+    st.textContent = '最速を探索中… ' + done + ' / ' + total;
+  }
+  function startFast() {
+    const tr = S.tr;
+    if (S.fast) cancelFast(S.fast);
+    const f = S.fast = { tr, car: S.car, vIn: S.vIn, ac: new AbortController(), timer: 0, t0: performance.now(), t1: 0, params: null, res: null };
+    showProgress(0, 2 * tr.corners.length);
+    f.timer = setTimeout(() => {
+      searchFastest(f.tr, f.car, f.vIn / 3.6, { signal: f.ac.signal, onProgress: (d, t) => { if (S.fast === f) showProgress(d, t); } })
+        .then(r => { if (!r.aborted && fastCurrent() === f) finishFast(f, r); })
+        .catch(e => { if (S.fast === f) { showProgress(null); showMsg('最速の探索に失敗しました（' + e.message + '）'); } });
+    }, FAST_DELAY);
+  }
+  function finishFast(f, r) {
+    const tr = f.tr;
+    const run = runLineN(tr, f.car, f.vIn / 3.6, tr.corners.length ? lineCustom(tr, r.params) : centerLine(tr));
+    f.params = r.params; f.t1 = performance.now();
+    f.res = { line: run.line, sim: run.sim, stats: cornerStats(tr, run.sim) };
+    showProgress(null);
+    if (S.results) S.results.fast = f.res;
+    if (!S.paramsEdited) {   // 自分のラインを触っていなければ最速に揃える
+      S.params = r.params.map(p => Object.assign({}, p));
+      if (S.results) S.results.my = f.res;
+    }
+    syncMyUI(); renderAll();
+  }
+
   /* ---------- 計算（tr → 6本のライン） ---------- */
   function compute() {
     const tr = S.tr;
-    if (!tr || tr.error) { S.results = null; return; }
+    if (!tr || tr.error) { stopFast(); S.results = null; return; }
     const vE = S.vIn / 3.6, R = {};
     const run = line => { const r = runLineN(tr, S.car, vE, line); return { line: r.line, sim: r.sim, stats: cornerStats(tr, r.sim) }; };
-    /* コーナーが無い直線では曲率最小化の方程式が特異になり NaN が出る（lines.js の solveLineN）。
+    /* コーナーが無い直線では曲率最小化の方程式が特異になり NaN が出る（lines.js では中央線にフォールバック済み）。
        ラインによる差も無いので、全系列を中央ラインにする */
     const straight = tr.corners.length === 0;
     const pick = make => run(straight ? centerLine(tr) : make());
@@ -107,7 +158,9 @@
     R.late = pick(() => lineLate(tr));
     R.inside = pick(() => lineInside(tr));
     R.my = pick(() => lineCustom(tr, S.params));
-    R.fast = R.my;   // 最速探索（searchFastest）は次のタスクで組み込む。それまでは自分のラインと同じ結果を指す
+    if (!fastCurrent()) startFast();
+    const f = fastCurrent();
+    R.fast = f && f.res ? f.res : R.my;   // 探索が終わるまでは自分のラインと同じ結果を仮に指す
     S.results = R;
   }
 
@@ -118,9 +171,16 @@
     const m = /^var\((--[\w-]+)\)$/.exec(v);
     return m ? (getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() || '#888') : v;
   }
-  let speedCtx = null;
+  let speedCtx = null, deltaCtx = null, ggCtx = null;
 
-  function renderVerdict() { $('verdict').innerHTML = SR.verdictHtml(SR.verdictInfo(S.results, S.tr)); }
+  function renderVerdict() {
+    $('verdict').innerHTML = SR.verdictHtml(SR.verdictInfo(S.results, S.tr));
+    if (fastRunning()) {
+      const p = document.createElement('p'); p.className = 'sub';
+      p.textContent = '最速を探索中です。いまの値は仮のもの（自分のラインと同じ）で、探索が終わると差し替わります。';
+      $('verdict').querySelector('.v-text').appendChild(p);
+    }
+  }
   function renderLegend() {
     const el = $('legend');
     if (!el.firstChild) el.innerHTML = SR.legendHtml();   // 系列は固定なので作るのは一度だけ（フォーカスを保つ）
@@ -132,6 +192,17 @@
     const el = $('speed');
     speedCtx = SR.speedPlot(el.clientWidth || 600, el.clientHeight || 260, S.tr, S.results, visibleIds(), S.sel);
     el.innerHTML = speedCtx.html;
+  }
+  function renderDelta() {
+    const el = $('delta');
+    deltaCtx = SR.deltaPlot(el.clientWidth || 600, el.clientHeight || 200, S.tr, S.results, visibleIds(), S.sel);
+    el.innerHTML = deltaCtx.html;
+  }
+  function renderGG() {
+    const el = $('gg');
+    ggCtx = SR.ggPlot(el.clientWidth || 300, el.clientHeight || 260, S.car, S.results[S.sel].sim, SR.seriesOf(S.sel).color);
+    el.innerHTML = ggCtx.html;
+    $('ggsub').textContent = SR.seriesOf(S.sel).name + ' のGの使い方（横軸: 横G、縦軸: 前後G）';
   }
   function renderMapLines() {
     api.clearLines();
@@ -145,13 +216,16 @@
   }
   function renderAll() {
     const ok = !!(S.tr && S.results);
-    ['verdict', 'legend', 'table-card', 'speed-card'].forEach(id => { $(id).hidden = !ok; });
+    ['verdict', 'legend', 'table-card', 'speed-card', 'delta-card', 'scrub-grid'].forEach(id => { $(id).hidden = !ok; });
+    $('btn-fast').disabled = !S.tr;
     if (!ok) {
-      api.clearLines(); speedCtx = null;
-      $('verdict').innerHTML = ''; $('table').innerHTML = ''; $('speed').innerHTML = '';
+      api.clearLines(); api.setCar(null); stopPlay(); speedCtx = deltaCtx = ggCtx = null;
+      ['verdict', 'table', 'speed', 'delta', 'gg', 'state'].forEach(id => { $(id).innerHTML = ''; });
       return;
     }
-    renderVerdict(); renderLegend(); renderTable(); renderSpeed(); renderMapLines();
+    renderVerdict(); renderLegend(); renderTable(); renderSpeed(); renderDelta(); renderGG(); renderMapLines();
+    $('scrub').max = S.tr.N - 1;
+    updateScrub();
   }
   /* 入力が連続しても 1 フレームに 1 回だけ計算・描画する */
   let pending = false;
@@ -160,29 +234,103 @@
     pending = true;
     requestAnimationFrame(() => {
       pending = false;
-      try { compute(); } catch (e) { S.results = null; showMsg('ラインの計算に失敗しました（' + e.message + '）'); }
+      try {
+        compute();
+        if (S.computeError) { S.computeError = false; showMsg(null); }   // 失敗メッセージは成功したら消す
+      } catch (e) { S.results = null; S.computeError = true; showMsg('ラインの計算に失敗しました（' + e.message + '）'); }
       renderAll();
     });
   }
 
-  /* 速度グラフのホバー（縦線と各系列の値） */
-  function bindSpeed() {
-    const el = $('speed');
+  /* ---------- 位置スクラブ（地図の車・グラフの縦線・G-G図・荷重カードが連動） ---------- */
+  function updateCross(id, c) {
+    const ln = $(id + '-x'); if (!c || !ln) return;
+    const xp = c.fr.x(S.tr.st[S.scrub]);
+    ln.setAttribute('x1', xp); ln.setAttribute('x2', xp);
+    c.ids.forEach(sid => { const d = $(id + '-d-' + sid); d.setAttribute('cx', xp); d.setAttribute('cy', c.fr.y(c.val(sid, S.scrub))); });
+  }
+  function updateScrub() {
+    if (!S.tr || !S.results) return;
+    const R = S.results[S.sel], i = S.scrub;
+    $('scrub').value = i;
+    $('pos-text').textContent = SR.posText(S.tr, i);
+    updateCross('speed', speedCtx); updateCross('delta', deltaCtx);
+    api.setCar(xyToLatLng(R.line.px[i], R.line.py[i], S.tr.origin));
+    $('state').innerHTML = SR.stateHtml(S.car, R.sim, i);
+    $('statepos').textContent = SR.seriesOf(S.sel).name + ' ／ ' + SR.posText(S.tr, i);
+    const dot = $('ggdot');
+    if (dot && ggCtx) { const d = SR.ggDot(ggCtx, R.sim, i); dot.setAttribute('cx', d.x); dot.setAttribute('cy', d.y); }
+  }
+  function setScrub(i) { if (!S.tr) return; S.scrub = SR.clampI(Math.round(i), 0, S.tr.N - 1); updateScrub(); }
+
+  /* 再生: 1 フレームに v[i]*dt だけ進む（dt は実際の経過秒。長い停止は 0.1 秒に丸める）。line.seg[i] を跨いだら i を進める。終端で止まる */
+  let raf = 0;
+  function stopPlay() {
+    if (!S.playing) return;
+    S.playing = false; cancelAnimationFrame(raf);
+    $('play').textContent = '再生'; $('play').setAttribute('aria-pressed', 'false');
+  }
+  function startPlay() {
+    if (!S.tr || !S.results) return;
+    if (S.scrub >= S.tr.N - 1) S.scrub = 0;
+    S.playing = true; $('play').textContent = '停止'; $('play').setAttribute('aria-pressed', 'true');
+    let last = 0, acc = 0;
+    const step = ts => {
+      if (!S.playing) return;
+      if (!S.tr || !S.results) { stopPlay(); return; }
+      const dt = last ? Math.min((ts - last) / 1000, 0.1) : 1 / 60; last = ts;
+      const R = S.results[S.sel], N = S.tr.N;
+      let i = S.scrub; acc += R.sim.v[i] * dt;
+      while (i < N - 1 && acc >= R.line.seg[i]) { acc -= R.line.seg[i]; i++; }
+      S.scrub = i; updateScrub();
+      if (i >= N - 1) { stopPlay(); return; }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  }
+
+  /* グラフ上の位置にスクラブを合わせ、値のツールチップを出す（速度・タイム差で共通）。再生中はつかんだとき（pointerdown）だけ止めて動かす */
+  function bindPlot(id, getCtx, tipFn) {
+    const el = $(id);
     const move = e => {
-      const c = speedCtx; if (!c || !S.tr) return;
-      const px = e.clientX - el.getBoundingClientRect().left;
+      const c = getCtx(); if (!c || !S.tr || !S.results) return;
+      if (S.playing) { if (e.type !== 'pointerdown') return; stopPlay(); }
+      const r = el.getBoundingClientRect(), px = (e.clientX - r.left) * c.fr.w / (r.width || c.fr.w);
       const xv = c.xd[0] + (px - c.fr.m.l) / (c.fr.w - c.fr.m.l - c.fr.m.r) * (c.xd[1] - c.xd[0]);
-      const i = SR.clampI(Math.round(xv / S.tr.ds), 0, S.tr.N - 1), xp = c.fr.x(S.tr.st[i]);
-      const h = $('speed-h'), ln = $('speed-x'); if (!h || !ln) return;
-      h.setAttribute('visibility', 'visible'); ln.setAttribute('x1', xp); ln.setAttribute('x2', xp);
-      c.ids.forEach(id => { const d = $('speed-d-' + id); d.setAttribute('cx', xp); d.setAttribute('cy', c.fr.y(S.results[id].sim.v[i] * 3.6)); });
-      const tip = $('speed-tip');
-      tip.innerHTML = SR.tipHtml(S.tr, S.results, c.ids, S.sel, i); tip.hidden = false;
+      setScrub(xv / S.tr.ds);
+      const xp = c.fr.x(S.tr.st[S.scrub]), tip = $(id + '-tip'); if (!tip) return;
+      tip.innerHTML = tipFn(S.tr, S.results, c.ids, S.sel, S.scrub); tip.hidden = false;
       const w = tip.offsetWidth;
       tip.style.left = Math.max(4, Math.min(c.fr.w - w - 4, xp + 14 + w > c.fr.w ? xp - w - 14 : xp + 14)) + 'px';
     };
     el.addEventListener('pointermove', move); el.addEventListener('pointerdown', move);
-    el.addEventListener('pointerleave', () => { const h = $('speed-h'), t = $('speed-tip'); if (h) h.setAttribute('visibility', 'hidden'); if (t) t.hidden = true; });
+    el.addEventListener('pointerleave', () => { const t = $(id + '-tip'); if (t) t.hidden = true; });
+  }
+
+  /* ---------- 自分のライン（コーナーごとのスライダー） ---------- */
+  /* 選択中のコーナーの値をスライダーに映す。rebuild=true でコーナー一覧も作り直す */
+  function syncMyUI(rebuild) {
+    const tr = S.tr, sel = $('my-corner'), has = !!(tr && tr.corners.length);
+    if (rebuild) sel.innerHTML = has ? tr.corners.map((k, c) => '<option value="' + c + '">' + cornerLabel(k) + '</option>').join('') : '';
+    ['my-corner', 'my-apex', 'my-inside', 'my-hold'].forEach(id => { $(id).disabled = !has; });
+    const f = fastCurrent();
+    $('my-reset').disabled = !(has && f && f.params);
+    $('my-hint').textContent = !tr ? '区間を決めると、コーナーごとに調整できます。' : has ? 'コーナーを選んで、エイペックスの位置・内への寄せ・入口で外に居続ける距離を動かします。' : 'この区間にはコーナーがありません。';
+    const p = has && S.params[+sel.value];
+    if (!p) return;
+    $('my-apex').value = Math.round(p.apex * 100); $('my-inside').value = Math.round(p.inside * 100); $('my-hold').value = p.hold;
+    $('my-apex-o').textContent = $('my-apex').value; $('my-inside-o').textContent = $('my-inside').value; $('my-hold-o').textContent = $('my-hold').value;
+  }
+  function onMyInput() {
+    const c = +$('my-corner').value; if (!S.params[c]) return;
+    S.params[c] = { apex: +$('my-apex').value / 100, inside: +$('my-inside').value / 100, hold: +$('my-hold').value };
+    S.paramsEdited = true;
+    $('my-apex-o').textContent = $('my-apex').value; $('my-inside-o').textContent = $('my-inside').value; $('my-hold-o').textContent = $('my-hold').value;
+    schedule();
+  }
+  function pickCorner(c) {
+    S.selCorner = c; $('my-corner').value = String(c); syncMyUI();
+    if (S.tr && S.results) renderTable();
   }
 
   /* ---------- 経路 → tr → コーナー表示 ---------- */
@@ -191,13 +339,15 @@
     if (!S.latlngs) return;
     const tr = buildTrackFromPath(S.latlngs, { W: S.W, mode: S.laneMode });
     if (tr.error) {
-      S.tr = null; S.results = null; api.setRoute(null); api.drawCorners([], null); renderAll();
+      S.tr = null; S.results = null; stopFast(); stopPlay(); S.scrub = 0; syncMyUI(true);
+      api.setRoute(null); api.drawCorners([], null); renderAll();
       $('sec-info').textContent = '区間は未設定です';
       showMsg('区間は100m〜5kmにしてください（いま ' + Math.round(tr.total) + ' m）');
       return;
     }
-    S.tr = tr;
-    S.params = defaultParams(tr, 'late'); S.selCorner = -1;
+    S.tr = tr; S.results = null;   // 古い tr の結果を参照する隙間を作らない
+    S.params = defaultParams(tr, 'late'); S.paramsEdited = false; S.selCorner = -1;
+    stopPlay(); S.scrub = 0; syncMyUI(true);
     schedule();
     api.setRoute(S.latlngs);
     api.drawCorners(tr.corners, tr);
@@ -311,40 +461,52 @@
     S.car = deriveCar(S.carP); schedule();
   });
 
+  /* 最速の探索・自分のライン */
+  $('btn-fast').addEventListener('click', () => { stopFast(); schedule(); });   // 同じ条件でやり直す
+  ['my-apex', 'my-inside', 'my-hold'].forEach(id => $(id).addEventListener('input', onMyInput));
+  $('my-corner').addEventListener('change', e => pickCorner(+e.target.value));
+  $('my-reset').addEventListener('click', () => {
+    const f = fastCurrent(); if (!f || !f.params) return;
+    S.params = f.params.map(p => Object.assign({}, p)); S.paramsEdited = false;
+    syncMyUI(); schedule();
+  });
+
+  /* スクラブ・再生 */
+  $('scrub').addEventListener('input', e => { stopPlay(); setScrub(+e.target.value); });
+  $('play').addEventListener('click', () => { if (S.playing) stopPlay(); else startPlay(); });
+
   /* 凡例: チェックで表示/非表示、ボタンで選択（選んだ系列は表示も入れる） */
   $('legend').addEventListener('change', e => {
     const i = e.target.closest('input[data-vis]'); if (!i || !S.results) return;
     if (i.checked) S.visible.add(i.dataset.vis); else S.visible.delete(i.dataset.vis);
-    renderTable(); renderSpeed(); renderMapLines();
+    renderTable(); renderSpeed(); renderDelta(); renderMapLines(); updateScrub();
   });
   $('legend').addEventListener('click', e => {
     const b = e.target.closest('button[data-sel]'); if (!b || !S.results) return;
     S.sel = b.dataset.sel; S.visible.add(S.sel);
-    renderLegend(); renderTable(); renderSpeed(); renderMapLines();
+    renderLegend(); renderTable(); renderSpeed(); renderDelta(); renderGG(); renderMapLines(); updateScrub();
   });
-  /* 表の行: 選んだコーナーに地図を寄せる（自分のライン調整の対象にも使う） */
+  /* 表の行: 選んだコーナーに地図を寄せる（自分のライン調整の対象にもなる） */
   $('table').addEventListener('click', e => {
     const row = e.target.closest('tr[data-c]'); if (!row || !S.tr) return;
     const c = +row.dataset.c, k = S.tr.corners[c]; if (!k) return;
-    S.selCorner = c;
-    $('table').querySelectorAll('tr[data-c]').forEach(r => {
-      const on = r === row; r.classList.toggle('pick', on);
-      if (on) r.setAttribute('aria-current', 'true'); else r.removeAttribute('aria-current');
-    });
+    pickCorner(c);   // 表の強調と #my-corner を合わせる
     const ll = trackToLatLngs(S.tr).slice(k.i0, k.i1 + 1);
     api.map.fitBounds(L.latLngBounds(ll.map(p => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 18 });
     $('map').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
-  bindSpeed();
+  bindPlot('speed', () => speedCtx, SR.tipHtml);
+  bindPlot('delta', () => deltaCtx, SR.deltaTipHtml);
   /* 横幅が変わったらグラフを描き直す／配色（ダークモード）が変わったら地図の線の色を取り直す */
   if (typeof ResizeObserver !== 'undefined') {
     let lastW = $('main').clientWidth, rT = 0;
     new ResizeObserver(() => {
       const w = $('main').clientWidth; if (w === lastW) return; lastW = w;
-      clearTimeout(rT); rT = setTimeout(() => { if (S.tr && S.results) renderSpeed(); }, 120);
+      clearTimeout(rT); rT = setTimeout(() => { if (S.tr && S.results) { renderSpeed(); renderDelta(); renderGG(); updateScrub(); } }, 120);
     }).observe($('main'));
   }
   if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.tr && S.results) renderMapLines(); });
 
   setMode(null);
+  syncMyUI(true);
 })();

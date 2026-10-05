@@ -218,6 +218,29 @@ td.t{font-weight:700;font-size:15px}
             <select id="f-drive"><option value="AWD">4WD</option><option value="FR">FR（後輪駆動）</option><option value="FF">FF（前輪駆動）</option></select></div>
         </div>
       </details>
+      <details id="d-fast" open>
+        <summary>最速の探索</summary>
+        <div class="grp">
+          <p class="hint">区間・進入速度・車種を変えると、最速のラインを自動で探し直します。</p>
+          <progress id="fast-progress" max="1" value="0" hidden></progress>
+          <p class="sub" id="fast-status" role="status" aria-live="polite"></p>
+          <button type="button" class="btn sub-btn" id="btn-fast" disabled>最速を再探索</button>
+        </div>
+      </details>
+      <details id="d-my" open>
+        <summary>自分のライン</summary>
+        <div class="grp">
+          <p class="hint" id="my-hint">コーナーを選んで、エイペックスの位置・内への寄せ・入口で外に居続ける距離を動かします。</p>
+          <div class="fld"><label for="my-corner">コーナー</label><select id="my-corner" disabled></select></div>
+          <div class="fld"><div class="fld-top"><label for="my-apex">エイペックスの位置（コーナー内 %）</label><output id="my-apex-o" for="my-apex">65</output></div>
+            <input type="range" id="my-apex" min="20" max="85" step="1" value="65" disabled></div>
+          <div class="fld"><div class="fld-top"><label for="my-inside">内側への寄せ（%）</label><output id="my-inside-o" for="my-inside">100</output></div>
+            <input type="range" id="my-inside" min="0" max="100" step="10" value="100" disabled></div>
+          <div class="fld"><div class="fld-top"><label for="my-hold">入口で外に居続ける距離（m）</label><output id="my-hold-o" for="my-hold">10</output></div>
+            <input type="range" id="my-hold" min="0" max="30" step="1" value="10" disabled></div>
+          <button type="button" class="btn sub-btn" id="my-reset" disabled>最速に戻す</button>
+        </div>
+      </details>
     </form>
 
     <div class="main" id="main">
@@ -227,6 +250,26 @@ td.t{font-weight:700;font-size:15px}
         <div class="card-head"><h2>区間の地図</h2><span class="sub" id="map-hint">ボタンで点の種類を選び、地図をクリックします</span></div>
         <div id="map"></div>
       </section>
+      <div class="two" id="scrub-grid" hidden>
+        <div style="display:grid;gap:22px;min-width:0">
+          <section class="card">
+            <div class="card-head"><h2>位置を動かす</h2><span class="sub" id="pos-text"></span></div>
+            <div class="scrubrow" style="grid-template-columns:auto minmax(0,1fr)">
+              <button type="button" class="btn sub-btn" id="play" aria-pressed="false">再生</button>
+              <input type="range" id="scrub" min="0" max="100" step="1" value="0" aria-label="区間内の位置">
+            </div>
+            <p class="sub">地図の赤い点・各グラフの縦線・右の車両状態が連動します。グラフを押しても動かせます。</p>
+          </section>
+          <section class="card" id="gg-card">
+            <div class="card-head"><h2>G-G 線図</h2><span class="sub" id="ggsub"></span></div>
+            <div class="plot" id="gg" style="height:260px"></div>
+          </section>
+        </div>
+        <section class="card" id="state-card">
+          <div class="card-head"><h2>車両状態（荷重と姿勢）</h2><span class="sub" id="statepos"></span></div>
+          <div id="state"></div>
+        </section>
+      </div>
       <section class="card" id="table-card" hidden>
         <div class="card-head"><h2>コーナーごとの比較</h2><span class="sub">行を押すと地図がそのコーナーに寄ります</span></div>
         <div class="tablewrap" id="table"></div>
@@ -234,6 +277,10 @@ td.t{font-weight:700;font-size:15px}
       <section class="card" id="speed-card" hidden>
         <div class="card-head"><h2>速度（km/h）</h2><span class="sub">横軸は区間の距離</span></div>
         <div class="plot" id="speed" style="height:260px"></div>
+      </section>
+      <section class="card" id="delta-card" hidden>
+        <div class="card-head"><h2>中央ラインとのタイム差の積み上げ（秒）</h2><span class="sub">線が下がる区間で中央より速く走れています</span></div>
+        <div class="plot" id="delta" style="height:200px"></div>
       </section>
     </div>
   </div>
