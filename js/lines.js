@@ -133,4 +133,59 @@ function cornerStats(tr, sim) {
   });
 }
 
-if (typeof module !== 'undefined') module.exports = { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats };
+/* ===== 最速ライン探索（コーナーごとの座標降下） ===== */
+const APEX_GRID = [0.30, 0.40, 0.50, 0.55, 0.60, 0.70, 0.80];
+const INSIDE_GRID = [1.0, 0.7, 0.4];
+const HOLD_GRID = [0, 10, 20];
+const SEARCH_PASSES = 2;
+
+/* コーナー c だけを格子（7×3×3=63通り）で試し、区間タイムが最短の {param, time} を返す。同タイムなら先に見つけた方 */
+function bestForCorner(tr, car, vEntry, params, c) {
+  let best = null;
+  for (const apex of APEX_GRID) for (const inside of INSIDE_GRID) for (const hold of HOLD_GRID) {
+    const trial = params.slice();
+    trial[c] = { apex, inside, hold };
+    const time = runLineN(tr, car, vEntry, lineCustom(tr, trial)).sim.time;
+    if (!best || time < best.time) best = { param: trial[c], time };
+  }
+  return best;
+}
+
+/* 同期版。defaultParams(late) から始め、コーナー順に他を固定して格子を総当たりし、これを2周する。{params, time} */
+function searchFastestSync(tr, car, vEntry) {
+  const C = tr.corners.length;
+  const params = defaultParams(tr, 'late');
+  if (C === 0) return { params, time: runLineN(tr, car, vEntry, lineCustom(tr, params)).sim.time };
+  let time = 0;
+  for (let pass = 0; pass < SEARCH_PASSES; pass++) {
+    for (let c = 0; c < C; c++) {
+      const b = bestForCorner(tr, car, vEntry, params, c);
+      params[c] = b.param; time = b.time;
+    }
+  }
+  return { params, time };
+}
+
+/* 非同期版。同じ探索を、コーナー1つ分ごとに画面へ制御を返しながら進める。
+   opts = {onProgress(done,total), signal}。各コーナー処理の前に signal.aborted を見て、立っていれば {aborted:true} を返す */
+async function searchFastest(tr, car, vEntry, opts) {
+  const { onProgress, signal } = opts || {};
+  const C = tr.corners.length;
+  if (C === 0) return searchFastestSync(tr, car, vEntry);
+  const total = SEARCH_PASSES * C;
+  const params = defaultParams(tr, 'late');
+  let time = 0, done = 0;
+  for (let pass = 0; pass < SEARCH_PASSES; pass++) {
+    for (let c = 0; c < C; c++) {
+      if (signal && signal.aborted) return { aborted: true };
+      const b = bestForCorner(tr, car, vEntry, params, c);
+      params[c] = b.param; time = b.time;
+      done++;
+      if (onProgress) onProgress(done, total);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  return { params, time };
+}
+
+if (typeof module !== 'undefined') module.exports = { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats, searchFastest, searchFastestSync };

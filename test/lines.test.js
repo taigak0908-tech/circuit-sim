@@ -1,7 +1,7 @@
 const { test, assert } = require('./harness');
 const { deriveCar } = require('../js/physics');
 const { buildTrackFromPath } = require('../js/track');
-const { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats } = require('../js/lines');
+const { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats, searchFastest, searchFastestSync } = require('../js/lines');
 const { course, toLatLngs, SHAPE } = require('./fixtures/courses');
 
 /* index.html の CAR_PRESETS.grb.v（スバル インプレッサ WRX STI）からコピー */
@@ -149,4 +149,53 @@ test('late の apex ピンは i0+0.65*(i1-i0) に内側いっぱい、入口 i0.
   const lc = lineCustom(tr, defaultParams(tr, 'late'));
   assert.equal(lc.n.length, tr.N);
   inRange(tr, lc.n, 'custom');
+});
+
+test('最速のタイムは 中央/OIO/late/inside のどれより短いか等しい（S字・GRB）', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const best = searchFastestSync(tr, car, V_ENTRY);
+  assert.equal(best.params.length, tr.corners.length);
+  const others = { center: centerLine(tr), oio: lineOIO(tr), late: lineLate(tr), inside: lineInside(tr) };
+  for (const k in others) {
+    const t = runLineN(tr, car, V_ENTRY, others[k]).sim.time;
+    assert.ok(best.time <= t + 1e-9, k + ': best ' + best.time + ' / ' + t);
+  }
+  /* time は params から再計算したタイムと一致する */
+  assert.ok(Math.abs(runLineN(tr, car, V_ENTRY, lineCustom(tr, best.params)).sim.time - best.time) < 1e-9);
+  /* コーナー0個は即返る */
+  const none = searchFastestSync(Object.assign({}, tr, { corners: [] }), car, V_ENTRY);
+  assert.deepEqual(none.params, []);
+  assert.ok(none.time > 0);
+});
+
+test('AbortController で中断すると {aborted:true}', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  /* 開始前に中断済み */
+  const ac0 = new AbortController(); ac0.abort();
+  assert.deepEqual(await searchFastest(tr, car, V_ENTRY, { signal: ac0.signal }), { aborted: true });
+  /* 1コーナー目を終えた時点で中断 → それ以上は進まない */
+  const ac = new AbortController();
+  let calls = 0;
+  const r = await searchFastest(tr, car, V_ENTRY, { signal: ac.signal, onProgress: (done) => { calls++; if (done === 1) ac.abort(); } });
+  assert.deepEqual(r, { aborted: true });
+  assert.ok(calls <= 2, 'onProgress calls ' + calls);
+});
+
+test('onProgress が最後に (total,total) で呼ばれ、結果は同期版と一致する', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const C = tr.corners.length;
+  const log = [];
+  const r = await searchFastest(tr, car, V_ENTRY, { onProgress: (done, total) => log.push([done, total]) });
+  assert.deepEqual(log[log.length - 1], [2 * C, 2 * C]);
+  assert.equal(log.length, 2 * C);
+  for (let i = 1; i < log.length; i++) assert.ok(log[i][0] > log[i - 1][0], 'monotonic');
+  const sync = searchFastestSync(tr, car, V_ENTRY);
+  assert.ok(Math.abs(r.time - sync.time) < 1e-9);
+  assert.deepEqual(r.params, sync.params);
+  /* opts 省略・コーナー0個でも動く */
+  const none = await searchFastest(Object.assign({}, tr, { corners: [] }), car, V_ENTRY);
+  assert.deepEqual(none.params, []);
 });
