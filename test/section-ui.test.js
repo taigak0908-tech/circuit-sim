@@ -33,6 +33,17 @@ test('判定: 最速と中央の差・最も縮んだコーナーを文にする
   const t = SR.tableHtml(tr, R, ['center', 'fast'], 'fast', 0);
   assert.equal((t.match(/<tr data-c=/g) || []).length, tr.corners.length);
   assert.ok(t.includes('区間合計') && t.includes('基準') && !t.includes('全インベタ'));
+  /* 各コーナー行に 1コーナー比較へのリンク（そのコーナーの R・角度・区間の幅・入口の中央ラインの速度） */
+  const links = t.match(/<a class="btn-sm"[^>]*href="[^"]+"/g) || [];
+  assert.equal(links.length, tr.corners.length);
+  tr.corners.forEach((k, c) => assert.ok(links[c].includes('href="' + SR.cornerLinkUrl(k, R.center.sim.v[k.i0], tr.W) + '"'), links[c]));
+  assert.ok(t.includes('幅 8〜16 m'));
+});
+
+test('引き継ぎ URL: R・角度（5° 刻み）・幅・入口速度（km/h 整数）を index.html へ渡す', () => {
+  const k = { rMin: 21.6, angDeg: 87.4 };
+  assert.equal(SR.cornerLinkUrl(k, 100 / 3.6, 6), 'index.html?R=22&angDeg=85&W=6&vIn=100');
+  assert.equal(SR.cornerLinkUrl({ rMin: 80, angDeg: 91 }, 41.67, 7.5), 'index.html?R=80&angDeg=90&W=7.5&vIn=150');
 });
 
 test('判定: コーナー0個は「ほぼ直線」、差が負なら −X.XX秒の形', () => {

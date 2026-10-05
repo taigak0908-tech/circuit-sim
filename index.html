@@ -408,6 +408,26 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
   } catch (e) { /* 保存なしでも動く */ }
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(P)); } catch (e) { /* 保存不可でも続行 */ } };
 
+  /* 区間モード（section.html）からの引き継ぎ: URL の R / angDeg / W / vIn があれば、復元した条件に上書きする。
+     各スライダーの範囲に収め、処理したらアドレスから消す（再読み込みで条件が固定されないように） */
+  (function applyUrlParams() {
+    let q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+    const lim = { R: [15, 200, 1], angDeg: [30, 180, 5], W: [8, 16, 0.5], vIn: [60, 220, 5] };
+    let got = false;
+    for (const k in lim) {
+      const raw = q.get(k); if (raw == null || raw.trim() === '') continue;
+      const v = Number(raw); if (!isFinite(v)) continue;
+      const [lo, hi, st] = lim[k];
+      P.corner[k] = Math.max(lo, Math.min(hi, Math.round(v / st) * st));   /* スライダーの刻みに丸める */
+      got = true;
+    }
+    if (!got) return;
+    P.corner.Ls = CORNER_PRESETS.mid.v.Ls; P.corner.Le = CORNER_PRESETS.mid.v.Le;   /* 進入・立ち上がりの直線は渡さない（既定値） */
+    P.cornerPreset = 'custom';
+    restored = false;   /* 前回のマイラインは別のコーナー用なので、引き継いだ条件で探し直す（起動時の autoSearch） */
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* 失敗しても続行 */ }
+  })();
+
   let tr, car, RES = [], sweep = null, scrub = 0, userScrub = false, ctxSpeed = null, ctxDelta = null, ctxMap = null, ctxGG = null;
   const resOf = id => RES.find(r => r.id === id);
 

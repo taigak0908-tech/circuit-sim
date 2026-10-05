@@ -528,6 +528,7 @@
   });
   /* 表の行: 選んだコーナーに地図を寄せる（自分のライン調整の対象にもなる） */
   $('table').addEventListener('click', e => {
+    if (e.target.closest('a')) return;   // 「1コーナーで詳しく」リンクは行クリック（地図を寄せる）に回さない
     const row = e.target.closest('tr[data-c]'); if (!row || !S.tr) return;
     const c = +row.dataset.c, k = S.tr.corners[c]; if (!k) return;
     pickCorner(c);   // 表の強調と #my-corner を合わせる

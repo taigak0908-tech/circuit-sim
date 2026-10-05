@@ -61,26 +61,34 @@ const SectionRender = (function () {
       '<button type="button" data-sel="' + s.id + '" aria-pressed="false"><span class="key" style="background:' + s.color + '"></span>' + s.name + '</button></span>').join('');
   }
 
+  /* ---------- 1コーナー比較（index.html）への引き継ぎ ----------
+     コーナー k・そのコーナー入口での中央ラインの速度 vMs（m/s）・区間の幅 W から URL を作る。
+     index.html 側で各スライダーの範囲（幅は 8 m 以上など）に収める。角度は 5° 刻み、速度は km/h の整数 */
+  function cornerLinkUrl(k, vMs, W) {
+    return 'index.html?R=' + Math.round(k.rMin) + '&angDeg=' + Math.round(k.angDeg / 5) * 5 + '&W=' + +(+W).toFixed(1) + '&vIn=' + Math.round(vMs * 3.6);
+  }
+
   /* ---------- コーナー表 ----------
      ids = 表示する系列 id の配列（SERIES の順）。selId = 強調する系列、selCorner = 選ばれている行（無ければ -1） */
   function tableHtml(tr, results, ids, selId, selCorner) {
     const cols = ids.map(id => seriesOf(id));
     const cls = id => (id === selId ? ' selcol' : '');
     let h = '<table class="table"><thead><tr><th scope="col" rowspan="2">コーナー</th>' +
-      cols.map(s => '<th scope="colgroup" colspan="2" class="sg' + cls(s.id) + '"' + '><span class="key" style="background:' + s.color + '"></span> ' + s.name + '</th>').join('') + '</tr><tr>' +
+      cols.map(s => '<th scope="colgroup" colspan="2" class="sg' + cls(s.id) + '"' + '><span class="key" style="background:' + s.color + '"></span> ' + s.name + '</th>').join('') + '<th scope="col" rowspan="2">詳しく</th></tr><tr>' +
       cols.map(s => '<th scope="col" class="' + cls(s.id).trim() + '">最低 km/h</th><th scope="col" class="' + cls(s.id).trim() + '">通過 s</th>').join('') + '</tr></thead><tbody>';
     tr.corners.forEach((k, c) => {
       h += '<tr data-c="' + c + '"' + (c === selCorner ? ' class="pick" aria-current="true"' : '') + '><td><button type="button" class="cbtn">' + M.cornerLabel(k, true) + '</button></td>' +
         cols.map(s => {
           const st = results[s.id].stats[c];
           return '<td class="' + cls(s.id).trim() + '">' + (st.vMin * 3.6).toFixed(1) + '</td><td class="' + cls(s.id).trim() + '">' + st.tCorner.toFixed(2) + '</td>';
-        }).join('') + '</tr>';
+        }).join('') + '<td><a class="btn-sm" target="_blank" rel="noopener" href="' + cornerLinkUrl(k, results.center.sim.v[k.i0], tr.W) + '">1コーナーで詳しく</a></td></tr>';
     });
     const t0 = results.center.sim.time;
     h += '<tr class="total"><td>区間合計</td>' + cols.map(s => {
       const t = results[s.id].sim.time;
       return '<td colspan="2" class="t' + cls(s.id) + '">' + t.toFixed(2) + ' <span class="sub">' + (s.id === 'center' ? '基準' : sgn(t - t0, 2)) + '</span></td>';
-    }).join('') + '</tr></tbody></table>';
+    }).join('') + '<td></td></tr></tbody></table>';
+    if (tr.corners.length) h += '<p class="hint">「1コーナーで詳しく」は、そのコーナーの条件（入口の速度は中央ライン）を 1コーナー比較へ渡して新しいタブで開きます。1コーナー比較は半径 15〜200 m・幅 8〜16 m・入口速度 60〜220 km/h の範囲なので、外れている値は端の値になります。</p>';
     return h;
   }
 
@@ -230,7 +238,7 @@ const SectionRender = (function () {
       '<p class="sub">ロールとピッチの図は、傾きを ' + EX + ' 倍に誇張しています。</p></div>';
   }
 
-  return { SERIES, seriesOf, sgn, clampI, verdictInfo, verdictText, verdictHtml, legendHtml, tableHtml, tickStep, tickList, frame, speedPlot, tipHtml, deltaSeries, deltaPlot, deltaTipHtml, cornerAt, posText, ggPlot, ggDot, stateHtml };
+  return { SERIES, seriesOf, sgn, clampI, verdictInfo, verdictText, verdictHtml, legendHtml, cornerLinkUrl, tableHtml, tickStep, tickList, frame, speedPlot, tipHtml, deltaSeries, deltaPlot, deltaTipHtml, cornerAt, posText, ggPlot, ggDot, stateHtml };
 })();
 
 if (typeof module !== 'undefined') module.exports = SectionRender;
