@@ -64,6 +64,11 @@ function trackToLatLngs(tr, n) {
 /* コーナー番号の丸数字（①〜⑳、21 以上は (21)） */
 function _cornerNo(no) { return no >= 1 && no <= 20 ? String.fromCharCode(0x2460 + no - 1) : '(' + no + ')'; }
 
+/* コーナーの表示名。例: ③左R22。withAng=true で「 90°」を付ける（地図ラベル・表で使う） */
+function cornerLabel(c, withAng) {
+  return _cornerNo(c.no) + (c.dir === 'L' ? '左' : '右') + 'R' + Math.round(c.rMin) + (withAng ? ' ' + Math.round(c.angDeg) + '°' : '');
+}
+
 /* 地図を作る。el = 地図を入れる要素（またはその id）。戻り値のメソッドで操作する */
 function createMap(el) {
   const map = L.map(el, { zoomControl: true });
@@ -101,7 +106,7 @@ function createMap(el) {
     (corners || []).forEach(c => {
       const mid = Math.round((c.i0 + c.i1) / 2);
       const p = _xyToLatLng(tr.cx[mid], tr.cy[mid], tr.origin);
-      const text = _cornerNo(c.no) + (c.dir === 'L' ? '左' : '右') + 'R' + Math.round(c.rMin) + ' ' + Math.round(c.angDeg) + '°';
+      const text = cornerLabel(c, true);
       L.marker([p.lat, p.lng], { interactive: false, keyboard: false, zIndexOffset: 500,
         icon: L.divIcon({ className: 'corner-wrap', html: '<span class="corner-lbl">' + text + '</span>', iconSize: [0, 0] }) }).addTo(cornerLayer);
     });
@@ -135,4 +140,4 @@ function createMap(el) {
   return { map, setBase, setRoute, setMarkers, drawCorners, drawLines, clearLines, setCar, onMapClick, fitRoute, saveView, restoreView };
 }
 
-if (typeof module !== 'undefined') module.exports = { fetchRoute, manualRoute, trackToLatLngs, createMap };
+if (typeof module !== 'undefined') module.exports = { fetchRoute, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo };
