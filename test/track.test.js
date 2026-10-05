@@ -1,5 +1,5 @@
 const { test, assert } = require('./harness');
-const { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature } = require('../js/track');
+const { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature, detectCorners, laneBounds, buildTrackFromPath } = require('../js/track');
 
 /* 中心 (0,0)・半径 r の円周上に 1° 刻みで n 点。ccw=true なら反時計回り（左旋回） */
 function arc(r, n, ccw) {
@@ -80,4 +80,122 @@ test('headingAndNormal は進行方向の右を正の法線にする', () => {
   /* 北向き: 右は東 → nx=1, ny=0。端（片側差分）でも同じ */
   const n = headingAndNormal([0, 0, 0], [0, 1, 2]);
   for (const i of [0, 1, 2]) assert.ok(Math.abs(n.nx[i] - 1) < 1e-12 && Math.abs(n.ny[i]) < 1e-12);
+});
+
+/* ===== コーナー検出・走行範囲・buildTrackFromPath ===== */
+
+/* 東向きに出発して、直線と円弧をつないだ中心線（平面 xy）を作る。0.5m 刻みで点を打つ。
+   steps: ['s', 長さm] / ['L'|'R', 半径m, 角度°]。
+   noise>0 なら spacing m 間隔に間引いた各点の xy に、±noise m 以内の決定的な擬似乱数を足す */
+function course(steps, noise, spacing) {
+  const h = 0.5;
+  let x = 0, y = 0, hd = 0;
+  const xs = [x], ys = [y];
+  for (const [k, a, b] of steps) {
+    if (k === 's') {
+      for (let d = 0; d < a; d += h) { x += Math.cos(hd) * h; y += Math.sin(hd) * h; xs.push(x); ys.push(y); }
+    } else {
+      const sgn = k === 'L' ? 1 : -1, n = Math.round(a * b * Math.PI / 180 / h);
+      for (let i = 0; i < n; i++) { hd += sgn * h / a; x += Math.cos(hd) * h; y += Math.sin(hd) * h; xs.push(x); ys.push(y); }
+    }
+  }
+  if (!noise) return { xs, ys };
+  const step = Math.round(spacing / h), nx = [], ny = [];
+  for (let i = 0; i < xs.length; i += step) {
+    nx.push(xs[i] + Math.sin(i * 12.9898) * noise);
+    ny.push(ys[i] + Math.sin(i * 78.233 + 1) * noise);
+  }
+  return { xs: nx, ys: ny };
+}
+const ORIGIN = { lat: 35.36, lng: 138.73 };
+const toLatLngs = (c) => c.xs.map((x, i) => { const p = xyToLatLng(x, c.ys[i], ORIGIN); return [p.lat, p.lng]; });
+const SHAPE = [['s', 30], ['L', 30, 90], ['s', 40], ['R', 30, 90], ['s', 30]];
+
+test('左R30→直線40m→右R30 のS字で左右2コーナーが検出される', () => {
+  const tr = buildTrackFromPath(toLatLngs(course(SHAPE)), {});
+  assert.ok(!tr.error, 'error: ' + tr.error);
+  assert.equal(tr.corners.length, 2);
+  assert.deepEqual(tr.corners.map(c => c.dir), ['L', 'R']);
+  assert.deepEqual(tr.corners.map(c => c.no), [1, 2]);
+  for (const c of tr.corners) {
+    assert.ok(Math.abs(c.angDeg - 90) < 8, 'angDeg ' + c.angDeg);
+    assert.ok(c.rMin > 25 && c.rMin < 36, 'rMin ' + c.rMin);
+    assert.ok(c.s0 === c.i0 * tr.ds && c.s1 === c.i1 * tr.ds);
+  }
+  assert.ok(tr.corners[0].s1 < tr.corners[1].s0, 'コーナーが順に並ぶ');
+  /* tr の基本形 */
+  assert.equal(tr.ds, 1);
+  assert.equal(tr.N, tr.cx.length);
+  assert.equal(tr.total, tr.st[tr.N - 1]);
+  assert.equal(tr.W, 6); assert.equal(tr.bLo, -2); assert.equal(tr.bHi, 2); assert.equal(tr.z, null);
+  assert.ok(tr.origin && Number.isFinite(tr.origin.lat));
+});
+
+test('R=8m・180°のヘアピンが1コーナー、angDeg≈180±5', () => {
+  const tr = buildTrackFromPath(toLatLngs(course([['s', 50], ['R', 8, 180], ['s', 50]])), { W: 4, mode: 'lane' });
+  assert.ok(!tr.error, 'error: ' + tr.error);
+  assert.equal(tr.corners.length, 1);
+  const c = tr.corners[0];
+  assert.equal(c.dir, 'R');
+  assert.ok(c.angDeg >= 175 && c.angDeg <= 185, 'angDeg ' + c.angDeg);
+  assert.ok(c.rMin >= 7 && c.rMin <= 9, 'rMin ' + c.rMin);
+  assert.equal(tr.bHi, 0);
+});
+
+test('±1mのノイズを乗せても検出数と向きが変わらない', () => {
+  /* 点を 20m 間隔（地図を手でなぞる程度）に間引き、各点を ±1m の決定的な擬似乱数でずらす。
+     10m 以下の間隔だと、kMin=1/150 では ±1m のずれが小さな偽コーナーになる（検出側のしきい値の限界） */
+  const a = buildTrackFromPath(toLatLngs(course(SHAPE)), {});
+  const b = buildTrackFromPath(toLatLngs(course(SHAPE, 1.0, 20)), {});
+  assert.ok(!a.error && !b.error);
+  assert.equal(b.corners.length, a.corners.length);
+  assert.deepEqual(b.corners.map(c => c.dir), a.corners.map(c => c.dir));
+});
+
+test('同方向コーナーが10m間隔なら1つにまとまる', () => {
+  /* 左(1/30)20点 → ゼロ10点 → 左20点。間 10m は mergeGap 15 未満 */
+  const k = new Float64Array(70);
+  for (let i = 10; i < 30; i++) k[i] = 1 / 30;
+  for (let i = 40; i < 60; i++) k[i] = 1 / 30;
+  const m = detectCorners(k, 1.0);
+  assert.equal(m.length, 1);
+  assert.equal(m[0].i0, 10); assert.equal(m[0].i1, 59); assert.equal(m[0].dir, 'L');
+  /* 間隔が mergeGap 以上（20m）なら分かれたまま */
+  const k2 = new Float64Array(80);
+  for (let i = 10; i < 30; i++) k2[i] = 1 / 30;
+  for (let i = 50; i < 70; i++) k2[i] = 1 / 30;
+  const m2 = detectCorners(k2, 1.0);
+  assert.equal(m2.length, 2);
+  /* 向きが違うなら隙間 0 でもまとめない */
+  const k3 = new Float64Array(60);
+  for (let i = 10; i < 30; i++) k3[i] = 1 / 30;
+  for (let i = 30; i < 50; i++) k3[i] = -1 / 30;
+  const m3 = detectCorners(k3, 1.0);
+  assert.deepEqual(m3.map(c => c.dir), ['L', 'R']);
+  assert.deepEqual(m3.map(c => c.no), [1, 2]);
+  /* minLen(8m) 未満の短い区間は無視 */
+  const k4 = new Float64Array(40); k4[10] = k4[11] = k4[12] = 1 / 20;
+  assert.equal(detectCorners(k4, 1.0).length, 0);
+  /* rMin と angDeg: 20点 × (1/30 rad/m) × 1m = 0.667 rad ≒ 38.2° */
+  assert.ok(Math.abs(m[0].rMin - 30) < 1e-9);
+  assert.ok(Math.abs(m2[0].angDeg - 20 / 30 * 180 / Math.PI) < 1e-9);
+});
+
+test('laneBounds(6,"full") は [-2,2]、laneBounds(6,"lane") は [-2,0]', () => {
+  assert.deepEqual(laneBounds(6, 'full'), { bLo: -2, bHi: 2 });
+  assert.deepEqual(laneBounds(6, 'lane'), { bLo: -2, bHi: 0 });
+  assert.deepEqual(laneBounds(3, 'full'), { bLo: -0.5, bHi: 0.5 });
+  assert.deepEqual(laneBounds(3, 'lane'), { bLo: -0.5, bHi: 0 });
+  assert.deepEqual(laneBounds(6, 'xxx'), { bLo: -2, bHi: 2 });
+});
+
+test('全長80mは {error:"short"}、5kmを超えると {error:"long"}', () => {
+  const s = buildTrackFromPath(toLatLngs(course([['s', 80]])), {});
+  assert.equal(s.error, 'short');
+  assert.ok(s.total > 79 && s.total < 81);
+  assert.ok(!('corners' in s));
+  const one = buildTrackFromPath([[35, 139]], {});
+  assert.equal(one.error, 'short'); assert.equal(one.total, 0);
+  const l = buildTrackFromPath([[35, 139], [35.05, 139]], {});
+  assert.equal(l.error, 'long'); assert.ok(l.total > 5000);
 });

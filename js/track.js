@@ -85,4 +85,58 @@ function curvature(cx, cy) {
   return k;
 }
 
-if (typeof module !== 'undefined') module.exports = { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature };
+/* 平滑化済みの曲率 kap から、コーナー（|κ| が kMin を超える連続区間）を検出する。
+   minLen 未満の区間は捨て、同じ向きで間が mergeGap 未満の区間は1つにまとめる（向きが違えば隙間 0 でもまとめない）。
+   戻り値: [{no(1始まり), dir('L'|'R'), i0, i1, s0, s1, rMin(区間内の最小旋回半径 m), angDeg(区間の旋回角 °)}] */
+function detectCorners(kap, ds, opt) {
+  const o = Object.assign({ kMin: 1 / 150, minLen: 8, mergeGap: 15 }, opt);
+  const n = kap.length, cand = [];
+  let i = 0;
+  while (i < n) {
+    if (Math.abs(kap[i]) <= o.kMin) { i++; continue; }
+    const i0 = i;
+    /* 符号が反転したらそこで区間を切る（L→R が隙間 0 で続いても別のコーナー） */
+    const left = kap[i] > 0;
+    while (i < n && Math.abs(kap[i]) > o.kMin && (kap[i] > 0) === left) i++;
+    const i1 = i - 1;
+    if ((i1 - i0 + 1) * ds >= o.minLen) cand.push({ i0, i1, dir: left ? 'L' : 'R' });
+  }
+  const merged = [];
+  for (const c of cand) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.dir === c.dir && (c.i0 - prev.i1) * ds < o.mergeGap) prev.i1 = c.i1;
+    else merged.push({ i0: c.i0, i1: c.i1, dir: c.dir });
+  }
+  return merged.map((c, k) => {
+    let kMax = 0, ang = 0;
+    for (let j = c.i0; j <= c.i1; j++) { const a = Math.abs(kap[j]); if (a > kMax) kMax = a; ang += a * ds; }
+    return { no: k + 1, dir: c.dir, i0: c.i0, i1: c.i1, s0: c.i0 * ds, s1: c.i1 * ds, rMin: 1 / kMax, angDeg: ang * 180 / Math.PI };
+  });
+}
+
+/* 走行できる横位置の範囲（進行方向の右が正）。コース幅 W の端から 1m（車幅の半分ほど）内側まで。
+   'full' = 全幅、'lane' = 左半分（中心線まで）。それ以外の mode は 'full' 扱い */
+function laneBounds(W, mode) {
+  const lo = -(W / 2 - 1);
+  return mode === 'lane' ? { bLo: lo, bHi: 0 } : { bLo: lo, bHi: W / 2 - 1 };
+}
+
+/* 緯度経度の列から tr（物理計算・ライン生成が使うトラック構造体）を組み立てる。
+   全長が 100m 未満 / 5000m 超なら {error:'short'|'long', total} を返す（呼び出し側は tr.error で分岐） */
+function buildTrackFromPath(latlngs, opt) {
+  const W = opt && opt.W != null ? opt.W : 6.0, mode = opt && opt.mode ? opt.mode : 'full';
+  const { xs, ys, origin } = toLocalXY(latlngs);
+  const { cx, cy, st } = resample(xs, ys, 1.0);
+  const N = cx.length;
+  if (N < 2) return { error: 'short', total: 0 };
+  const total = st[N - 1];
+  if (total < 100) return { error: 'short', total };
+  if (total > 5000) return { error: 'long', total };
+  const kap = smooth(curvature(cx, cy), 5);
+  const { nx, ny } = headingAndNormal(cx, cy);
+  const corners = detectCorners(kap, 1.0);
+  const { bLo, bHi } = laneBounds(W, mode);
+  return { N, ds: 1, cx, cy, nx, ny, st, kap, total, origin, corners, W, bLo, bHi, z: null };
+}
+
+if (typeof module !== 'undefined') module.exports = { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature, detectCorners, laneBounds, buildTrackFromPath };
