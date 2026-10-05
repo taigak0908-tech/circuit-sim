@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>自動テスト</title>
+<style>
+:root{--bg:#f4f4f1;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--border:rgba(11,11,11,.13);--ok:#1a7f4e;--ng:#c93535}
+@media (prefers-color-scheme: dark){:root{--bg:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--border:rgba(255,255,255,.14);--ok:#3ec48a;--ng:#e66767}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.7 "Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif}
+main{max-width:860px;margin-inline:auto;padding:22px 16px 56px;display:grid;gap:14px}
+h1{margin:0;font-size:22px}
+p{margin:0}
+.sub{color:var(--ink2);font-size:13px}
+#summary{font-weight:700;font-size:16px;padding:10px 12px;border:1px solid var(--border);border-left:4px solid var(--ink2);border-radius:6px;background:var(--surface)}
+#summary.ok{border-left-color:var(--ok);color:var(--ok)}
+#summary.ng{border-left-color:var(--ng);color:var(--ng)}
+#results{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+#results li{padding:3px 8px;border-radius:4px;font-size:13px;word-break:break-word}
+#results li.ng{background:rgba(201,53,53,.12);color:var(--ng)}
+#skipped{padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <h1>自動テスト</h1>
+  <p class="sub">js/*.js の計算部分（track・lines・store・map の通信まわり・section-render）をブラウザで確かめます。Node では <code>npm test</code> でも同じものが走ります。</p>
+  <p id="summary">実行中…</p>
+  <p id="skipped"><b>ブラウザでは走らないテスト:</b> <code>test/physics.test.js</code>（index.html のエンジン部をファイルとして読み、切り出し前に記録した 15 個の区間タイムと照合する回帰テスト）は Node でのみ実行します（<code>npm test</code>）。</p>
+  <ul id="results"></ul>
+</main>
+
+<!-- 計算部品（section.html と同じ読み込み順。section-ui.js は画面配線なので読まない） -->
+<script src="js/physics.js"></script>
+<script src="js/track.js"></script>
+<script src="js/lines.js"></script>
+<script src="js/map.js"></script>
+<script src="js/store.js"></script>
+<script src="js/section-render.js"></script>
+<script src="test/harness.js"></script>
+<script>
+/* 各 *.test.js は Node 向けに require / module.exports で書かれていて、トップレベルの const が互いにぶつかる。
+   そこで 1 ファイルずつ取得し、require の最小シムと専用の module を渡した関数として実行する
+   （js/*.js はブラウザではグローバルなので、require('../js/…') はグローバルから取り出して返す）。
+   fetch を使うので http で開くこと（file:// では動かない）。 */
+(function () {
+  const FILES = ['track', 'lines', 'map', 'store', 'section-ui'];   // physics.test.js は fs を使うので除外
+  const FIXTURES = ['test/fixtures/courses.js'];
+  const $ = id => document.getElementById(id);
+  const evalGlobal = name => (0, eval)(name);   // グローバルな const / function を名前で引く（const は window のプロパティにならない）
+  const ALIAS = { cornerNo: '_cornerNo' };       // map.js の module.exports で別名にしているもの
+  const globals = () => new Proxy({}, { get: (_, k) => { if (typeof k !== 'string') return undefined; return evalGlobal(ALIAS[k] || k); } });
+  const fixtures = {};
+  const req = p => {
+    if (p === './harness') return window.TestHarness;
+    if (p === '../js/section-render') return evalGlobal('SectionRender');
+    if (p.startsWith('../js/') || p.startsWith('../../js/')) return globals();
+    if (p === './fixtures/courses') return fixtures.courses;
+    throw new Error('test.html の require シムが ' + p + ' を知らない');
+  };
+  const load = async path => {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(path + ' を読めません（HTTP ' + res.status + '）');
+    return res.text();
+  };
+  const run = (src, name) => { const m = { exports: {} }; new Function('require', 'module', 'exports', src + '\n//# sourceURL=' + name)(req, m, m.exports); return m.exports; };
+
+  (async () => {
+    try {
+      fixtures.courses = run(await load(FIXTURES[0]), FIXTURES[0]);
+      for (const f of FILES) run(await load('test/' + f + '.test.js'), 'test/' + f + '.test.js');
+    } catch (e) {
+      $('summary').className = 'ng';
+      $('summary').textContent = 'テストを読み込めませんでした: ' + e.message + (location.protocol === 'file:' ? '（file:// ではテストファイルを取得できません。http で開いてください。例: npx -y http-server -p 8765）' : '');
+      document.title = '❌ 自動テスト';
+      return;
+    }
+    const r = await window.TestHarness.done();
+    const total = r.pass + r.fail;
+    $('summary').className = r.fail ? 'ng' : 'ok';
+    $('summary').textContent = r.fail ? '❌ ' + r.fail + ' 件失敗（全 ' + total + ' 件）' : '✅ 全 ' + total + ' 件 合格';
+    document.title = (r.fail ? '❌ ' : '✅ ') + '自動テスト ' + r.pass + '/' + total;
+  })();
+})();
+</script>
+</body>
+</html>

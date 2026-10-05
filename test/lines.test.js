@@ -1,0 +1,271 @@
+const { test, assert } = require('./harness');
+const { deriveCar } = require('../js/physics');
+const { buildTrackFromPath } = require('../js/track');
+const { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats, searchFastest, searchFastestSync } = require('../js/lines');
+const { course, toLatLngs, SHAPE } = require('./fixtures/courses');
+
+/* index.html の CAR_PRESETS.grb.v（スバル インプレッサ WRX STI）からコピー */
+const GRB = { mass: 1550, ps: 308, mu: 1.10, wf: 59, h: 0.50, rs: 56, L: 2.625, tf: 1.530, tr: 1.540, cda: 0.78, cla: 0.10, rollGrad: 3.2, pitchGrad: 1.6, drive: 'AWD' };
+const V_ENTRY = 60 / 3.6;
+const EPS = 1e-6;
+
+const sTrack = (opt) => {
+  const tr = buildTrackFromPath(toLatLngs(course(SHAPE)), opt);
+  assert.ok(!tr.error, 'error: ' + tr.error);
+  return tr;
+};
+const allFree = (N) => new Float64Array(N).fill(NaN);
+const inRange = (tr, n, msg) => {
+  for (let i = 0; i < tr.N; i++) assert.ok(n[i] >= tr.bLo - EPS && n[i] <= tr.bHi + EPS && Number.isFinite(n[i]), msg + ' i=' + i + ' n=' + n[i]);
+};
+
+test('ピン無しの解は全点が [bLo-1e-6, bHi+1e-6] に収まる（S字・W=6・full）', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const t0 = Date.now();
+  const line = solveLineN(tr, allFree(tr.N));
+  assert.ok(Date.now() - t0 < 1000, '1秒以内に終わる');
+  assert.equal(line.n.length, tr.N);
+  inRange(tr, line.n, 'full');
+  /* 範囲を実際に使っている（曲率最小なので壁に当たる点がある） */
+  assert.ok(Math.max(...line.n) > tr.bHi - 0.05 || Math.min(...line.n) < tr.bLo + 0.05);
+});
+
+test('ピンを置いた点はピン値±0.01', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const pins = allFree(tr.N);
+  const at = { 20: 1.0, 60: -1.5, 100: 0.5, 140: -0.8 };
+  for (const i in at) pins[i] = at[i];
+  const line = solveLineN(tr, pins);
+  inRange(tr, line.n, 'pins');
+  for (const i in at) assert.ok(Math.abs(line.n[i] - at[i]) < 0.01, 'i=' + i + ' n=' + line.n[i]);
+  /* 範囲外のピンは範囲に丸められる */
+  const p2 = allFree(tr.N); p2[60] = 99;
+  const l2 = solveLineN(tr, p2);
+  assert.ok(Math.abs(l2.n[60] - tr.bHi) < 0.01, 'clamp n=' + l2.n[60]);
+});
+
+test('自車線 W=3（範囲 [-0.5,0]）でも収束し範囲内', () => {
+  const tr = sTrack({ W: 3, mode: 'lane' });
+  assert.equal(tr.bLo, -0.5);
+  assert.equal(tr.bHi, 0);
+  const line = solveLineN(tr, allFree(tr.N));
+  inRange(tr, line.n, 'lane');
+  assert.ok(Number.isFinite(line.length) && line.length > tr.total * 0.95);
+});
+
+test('OIO の区間タイムは中央より短い（GRB・vEntry 60km/h）', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const mid = runLineN(tr, car, V_ENTRY, centerLine(tr));
+  const oio = runLineN(tr, car, V_ENTRY, lineOIO(tr));
+  assert.ok(mid.sim.time > 0 && oio.sim.time > 0);
+  assert.ok(oio.sim.time < mid.sim.time, 'OIO ' + oio.sim.time + ' / 中央 ' + mid.sim.time);
+});
+
+test('centerLine は n=0 で中心線そのもの、finishLineN は距離と曲率を返す', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const c = centerLine(tr);
+  for (let i = 0; i < tr.N; i++) assert.ok(c.n[i] === 0 && c.px[i] === tr.cx[i] && c.py[i] === tr.cy[i]);
+  assert.ok(Math.abs(c.length - tr.total) < 1, 'length ' + c.length);
+  assert.equal(c.kap.length, tr.N);
+  assert.ok(c.iApex === undefined);
+  /* S字の中央線: 左コーナーの曲率は正、右は負 */
+  const [L, R] = tr.corners;
+  assert.ok(c.kap[Math.round((L.i0 + L.i1) / 2)] > 0.02 && c.kap[Math.round((R.i0 + R.i1) / 2)] < -0.02);
+  assert.ok(finishLineN(tr, new Float64Array(tr.N)).length === c.length);
+});
+
+/* ---- Task 5: 型ライン・自分のライン・コーナー別集計 ---- */
+const innerOf = (tr, c) => (c.dir === 'L' ? tr.bLo : tr.bHi);
+
+test('インベタは各コーナーの i0..i1 で |n - 内側境界| < 0.05', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  assert.ok(tr.corners.length >= 2);
+  const line = lineInside(tr);
+  inRange(tr, line.n, 'inside');
+  for (const c of tr.corners) {
+    const inner = innerOf(tr, c);
+    for (let i = c.i0; i <= c.i1; i++) assert.ok(Math.abs(line.n[i] - inner) < 0.05, 'corner ' + c.no + ' i=' + i + ' n=' + line.n[i] + ' inner=' + inner);
+  }
+});
+
+test('コーナーが先頭(i0=0)・末尾(i1=N-1)にあってもピン生成で例外が出ない', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const N = tr.N;
+  const variants = [
+    [{ no: 1, dir: 'L', i0: 0, i1: 20, s0: 0, s1: 20 * tr.ds, rMin: 30, angDeg: 90 }],
+    [{ no: 1, dir: 'R', i0: N - 21, i1: N - 1, s0: 0, s1: 0, rMin: 30, angDeg: 90 }],
+    [{ no: 1, dir: 'L', i0: 0, i1: N - 1, s0: 0, s1: 0, rMin: 30, angDeg: 90 }],
+    [],
+  ];
+  for (const corners of variants) {
+    const t2 = Object.assign({}, tr, { corners });
+    const pins = pinsFromParams(t2, defaultParams(t2, 'late'));
+    assert.equal(pins.length, N);
+    const line = lineLate(t2);
+    inRange(t2, line.n, 'edge');
+  }
+  /* コーナー0個は全部 NaN */
+  const none = pinsFromParams(Object.assign({}, tr, { corners: [] }), []);
+  assert.ok(none.every(Number.isNaN));
+  /* params が不足していればそのコーナーはピン無し */
+  const short = pinsFromParams(tr, []);
+  assert.ok(short.every(Number.isNaN));
+});
+
+test('cornerStats の tCorner の合計 ≤ sim.time（各コーナーの vMin は正）', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const r = runLineN(tr, car, V_ENTRY, lineLate(tr));
+  const st = cornerStats(tr, r.sim);
+  assert.equal(st.length, tr.corners.length);
+  let sum = 0;
+  st.forEach((x, c) => {
+    const k = tr.corners[c];
+    assert.ok(x.vMin > 0 && x.tCorner > 0, 'corner ' + c);
+    assert.equal(x.vMin, Math.min(...Array.from(r.sim.v.slice(k.i0, k.i1 + 1))));
+    sum += x.tCorner;
+  });
+  assert.ok(sum <= r.sim.time + 1e-9, 'sum ' + sum + ' / time ' + r.sim.time);
+});
+
+test('late の apex ピンは i0+0.65*(i1-i0) に内側いっぱい、入口 i0..i0+10m は外側（apex の手前 max(8m, 2W) は空ける）', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const pins = pinsFromParams(tr, defaultParams(tr, 'late'));
+  assert.equal(pins.length, tr.N);
+  for (const c of tr.corners) {
+    const ia = Math.round(c.i0 + 0.65 * (c.i1 - c.i0));
+    const inner = innerOf(tr, c), outer = c.dir === 'L' ? tr.bHi : tr.bLo;
+    assert.ok(Math.abs(pins[ia] - inner) < 1e-9, 'apex corner ' + c.no + ' pin=' + pins[ia]);
+    const iEnd = Math.min(c.i0 + Math.round(10 / tr.ds), ia - Math.round(Math.max(8, 2 * tr.W) / tr.ds));
+    for (let i = c.i0; i <= iEnd; i++) assert.ok(Math.abs(pins[i] - outer) < 1e-9, 'hold corner ' + c.no + ' i=' + i);
+  }
+  /* 自車線（bHi=0）では右コーナーの内側は 0（中心） */
+  const lane = sTrack({ W: 3, mode: 'lane' });
+  const pl = pinsFromParams(lane, [{ apex: 0.5, inside: 1, hold: 0 }, { apex: 0.5, inside: 1, hold: 0 }]);
+  const R = lane.corners[1];
+  assert.ok(Math.abs(pl[Math.round((R.i0 + R.i1) / 2)] - 0) < 1e-9);
+  /* lineCustom は pinsFromParams を通して解く */
+  const lc = lineCustom(tr, defaultParams(tr, 'late'));
+  assert.equal(lc.n.length, tr.N);
+  inRange(tr, lc.n, 'custom');
+});
+
+test('長さ 20 m のコーナーに hold=30 を与えても、外側ピンは apex から 8 点未満の所に無い（最も近い外側ピンは W=6 で 12 点手前、W=3 で 8 点手前）', () => {
+  for (const [W, gap] of [[6, 12], [3, 8]]) {
+    const base = sTrack({ W, mode: 'full' });
+    const k = { no: 1, dir: 'L', i0: 100, i1: 120, s0: 100, s1: 120, rMin: 20, angDeg: 60 };
+    const tr = Object.assign({}, base, { corners: [k] });
+    const p = { apex: 0.65, inside: 1, hold: 30 };
+    const pins = pinsFromParams(tr, [p]);
+    const ia = Math.round(k.i0 + p.apex * (k.i1 - k.i0)), outer = tr.bHi;
+    assert.ok(Math.abs(pins[ia] - tr.bLo) < 1e-9, 'apex');
+    for (let i = ia - 7; i < ia; i++) assert.ok(Number.isNaN(pins[i]), 'W=' + W + ' i=' + i + ' pin=' + pins[i]);
+    /* 入口の外側ピンは apex の gap 点手前まで（それより後ろは置かない） */
+    for (let i = k.i0; i <= ia - gap; i++) assert.ok(Math.abs(pins[i] - outer) < 1e-9, 'W=' + W + ' hold i=' + i);
+    for (let i = ia - gap + 1; i < ia; i++) assert.ok(Number.isNaN(pins[i]), 'W=' + W + ' gap i=' + i);
+  }
+  /* 範囲が逆転する（apex が入口に近すぎる）ときは hold ピンを置かない */
+  const tr = Object.assign({}, sTrack({ W: 6, mode: 'full' }), { corners: [{ no: 1, dir: 'R', i0: 100, i1: 110, s0: 100, s1: 110, rMin: 20, angDeg: 30 }] });
+  const pins = pinsFromParams(tr, [{ apex: 0.5, inside: 1, hold: 30 }]);
+  assert.equal(pins.filter(x => !Number.isNaN(x)).length, 1, 'apex のピンだけ');
+});
+
+test('最速のタイムは 中央/OIO/late/inside のどれより短いか等しい（S字・GRB）', () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const best = searchFastestSync(tr, car, V_ENTRY);
+  assert.equal(best.params.length, tr.corners.length);
+  const others = { center: centerLine(tr), oio: lineOIO(tr), late: lineLate(tr), inside: lineInside(tr) };
+  for (const k in others) {
+    const t = runLineN(tr, car, V_ENTRY, others[k]).sim.time;
+    assert.ok(best.time <= t + 1e-9, k + ': best ' + best.time + ' / ' + t);
+  }
+  /* time は params から再計算したタイムと一致する */
+  assert.ok(Math.abs(runLineN(tr, car, V_ENTRY, lineCustom(tr, best.params)).sim.time - best.time) < 1e-9);
+  /* コーナー0個は即返る */
+  const none = searchFastestSync(Object.assign({}, tr, { corners: [] }), car, V_ENTRY);
+  assert.deepEqual(none.params, []);
+  assert.ok(none.time > 0);
+});
+
+test('AbortController で中断すると {aborted:true}', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  /* 開始前に中断済み */
+  const ac0 = new AbortController(); ac0.abort();
+  assert.deepEqual(await searchFastest(tr, car, V_ENTRY, { signal: ac0.signal }), { aborted: true });
+  /* 1コーナー目を終えた時点で中断 → それ以上は進まない */
+  const ac = new AbortController();
+  let calls = 0;
+  const r = await searchFastest(tr, car, V_ENTRY, { signal: ac.signal, onProgress: (done) => { calls++; if (done === 1) ac.abort(); } });
+  assert.deepEqual(r, { aborted: true });
+  assert.ok(calls <= 2, 'onProgress calls ' + calls);
+});
+
+test('onProgress が最後に (total,total) で呼ばれ、結果は同期版と一致する', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const C = tr.corners.length;
+  const log = [];
+  const r = await searchFastest(tr, car, V_ENTRY, { onProgress: (done, total) => log.push([done, total]) });
+  assert.deepEqual(log[log.length - 1], [2 * C, 2 * C]);
+  assert.equal(log.length, 2 * C);
+  for (let i = 1; i < log.length; i++) assert.ok(log[i][0] > log[i - 1][0], 'monotonic');
+  const sync = searchFastestSync(tr, car, V_ENTRY);
+  assert.ok(Math.abs(r.time - sync.time) < 1e-9);
+  assert.deepEqual(r.params, sync.params);
+  /* opts 省略・コーナー0個でも動く */
+  const none = await searchFastest(Object.assign({}, tr, { corners: [] }), car, V_ENTRY);
+  assert.deepEqual(none.params, []);
+});
+
+test('完全な直線 200 m（コーナー0）でも lineOIO の n に NaN が無く、タイムが有限', () => {
+  /* 曲率がほぼ0でピンも無いと連立方程式が特異になり、n が NaN になっていた */
+  const tr = buildTrackFromPath(toLatLngs(course([['s', 200]])), { W: 6, mode: 'full' });
+  assert.ok(!tr.error, 'error: ' + tr.error);
+  assert.equal(tr.corners.length, 0);
+  const line = lineOIO(tr);
+  for (let i = 0; i < tr.N; i++) assert.ok(Number.isFinite(line.n[i]), 'n[' + i + ']=' + line.n[i]);
+  const r = runLineN(tr, deriveCar(GRB), V_ENTRY, line);
+  assert.ok(Number.isFinite(r.sim.time) && r.sim.time > 0, 'time=' + r.sim.time);
+});
+
+test('時間分割（sliceMs: 0 で毎評価ごとに制御を返す）でも結果は同期版と一致する', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  const r = await searchFastest(tr, car, V_ENTRY, { sliceMs: 0 });
+  const sync = searchFastestSync(tr, car, V_ENTRY);
+  assert.ok(Math.abs(r.time - sync.time) < 1e-9);
+  assert.deepEqual(r.params, sync.params);
+});
+
+test('時間分割の途中（コーナー処理の最中に制御を返した直後）で中断すると {aborted:true}、onProgress は呼ばれない', async () => {
+  const tr = sTrack({ W: 6, mode: 'full' });
+  const car = deriveCar(GRB);
+  /* aborted の読み取り回数で中断を再現する: 1回目（コーナー処理の前）は false、2回目（最初の await の直後）から true */
+  let reads = 0, progress = 0;
+  const signal = { get aborted() { return ++reads > 1; } };
+  const r = await searchFastest(tr, car, V_ENTRY, { sliceMs: 0, signal, onProgress: () => { progress++; } });
+  assert.deepEqual(r, { aborted: true });
+  assert.equal(reads, 2, 'aborted を読んだ回数');
+  assert.equal(progress, 0);
+});
+
+test('局所窓の探索（既定）のタイムは、区間全体で評価する旧来の探索（windowed:false）の +1% 以内（S字と、窓が区間より短い8コーナーの峠）', () => {
+  const car = deriveCar(GRB);
+  /* 峠: 左右交互の8コーナー（R 15〜40 m）を 60 m の直線でつなぐ。窓（前後のコーナー＋50 m）が区間全体より短くなる長さ */
+  const pass = [['s', 60]];
+  [[25, 'L', 120], [15, 'R', 160], [40, 'L', 70], [20, 'R', 140], [30, 'L', 100], [15, 'L', 150], [35, 'R', 80], [20, 'L', 130]]
+    .forEach(([r, d, ang]) => pass.push([d, r, ang], ['s', 60]));
+  const courses = { S字: sTrack({ W: 6, mode: 'full' }), 峠: buildTrackFromPath(toLatLngs(course(pass)), { W: 6, mode: 'full' }) };
+  assert.ok(!courses.峠.error && courses.峠.corners.length >= 6, '峠のコーナー数 ' + courses.峠.corners.length);
+  for (const name in courses) {
+    const tr = courses[name];
+    const win = searchFastestSync(tr, car, V_ENTRY), full = searchFastestSync(tr, car, V_ENTRY, { windowed: false });
+    assert.ok(win.time <= full.time * 1.01, name + ': 局所窓 ' + win.time + ' / 全体 ' + full.time);
+    /* time は区間全体のタイム（params から解き直した値と一致）で、出発点の late より遅くならない */
+    assert.ok(Math.abs(runLineN(tr, car, V_ENTRY, lineCustom(tr, win.params)).sim.time - win.time) < 1e-9, name + ': time の再計算');
+    assert.ok(win.time <= runLineN(tr, car, V_ENTRY, lineLate(tr)).sim.time + 1e-9, name + ': late 以下');
+  }
+});

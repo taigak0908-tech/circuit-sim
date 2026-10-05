@@ -58,6 +58,11 @@ h2{font-size:15px;font-weight:700;line-height:1.4;text-wrap:balance}
 .seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
 .btn{padding:8px 12px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .btn:hover, .seg button:hover{filter:brightness(1.06)}
+.tabs{display:flex;gap:4px}
+.tabs a{font-size:13px;font-weight:700;color:var(--ink2);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:5px 16px;background:var(--surface)}
+.tabs a[aria-current=page]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.tabs a:hover{filter:brightness(1.06)}
+.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* 結論 */
 .verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 32px;align-items:center;border-top:3px solid var(--ink);padding-top:14px}
@@ -135,6 +140,7 @@ td.t{font-weight:700;font-size:15px}
 
 <div class="wrap">
   <header style="display:grid;gap:6px">
+    <nav class="tabs" aria-label="モード切替"><a href="index.html" aria-current="page">1コーナー</a><a href="section.html">区間</a></nav>
     <h1>コーナーライン比較シム</h1>
     <p class="lede">コーナー1つを5通りのラインで走らせ、荷重移動を含めてボトム速度・立ち上がり速度・区間タイムの差を計算します。左の数値を動かすと、その場で全部計算し直します。</p>
   </header>
@@ -219,11 +225,9 @@ td.t{font-weight:700;font-size:15px}
     </div>
   </div>
 </div>
+<script src="js/physics.js"></script>
 <script>
 /* ===== 計算エンジン（DOM非依存） ===== */
-const G = 9.81, RHO = 1.2;
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-
 /* コース: 直線 → 左コーナー(円弧) → 直線。n は外側を正とする横位置 */
 function buildTrack(c) {
   const ang = c.angDeg * Math.PI / 180, arc = c.R * ang, total = c.Ls + arc + c.Le;
@@ -239,28 +243,6 @@ function buildTrack(c) {
   }
   return { N, ds, cx, cy, nx, ny, st, total, ang, W: c.W, R: c.R,
     iA: Math.round(c.Ls / ds), iB: Math.round((c.Ls + arc) / ds), b: Math.max(0.3, c.W / 2 - 1.0) };
-}
-
-/* 対称5重対角の連立方程式 */
-function solvePenta(d0, d1, d2, rhs) {
-  const n = d0.length;
-  const c = Float64Array.from(d0), d = Float64Array.from(d1), e = Float64Array.from(d2), x = Float64Array.from(rhs);
-  const b = new Float64Array(n), a = new Float64Array(n);
-  for (let i = 1; i < n; i++) b[i] = d1[i - 1];
-  for (let i = 2; i < n; i++) a[i] = d2[i - 2];
-  for (let i = 0; i < n - 1; i++) {
-    let m = b[i + 1] / c[i];
-    c[i + 1] -= m * d[i]; x[i + 1] -= m * x[i];
-    if (i + 2 < n) {
-      d[i + 1] -= m * e[i];
-      m = a[i + 2] / c[i];
-      b[i + 2] -= m * d[i]; c[i + 2] -= m * e[i]; x[i + 2] -= m * x[i];
-    }
-  }
-  x[n - 1] /= c[n - 1];
-  x[n - 2] = (x[n - 2] - d[n - 2] * x[n - 1]) / c[n - 2];
-  for (let i = n - 3; i >= 0; i--) x[i] = (x[i] - d[i] * x[i + 1] - e[i] * x[i + 2]) / c[i];
-  return x;
 }
 
 /* 走行ライン: 指定点を通り、コース幅の中で曲率が最小になる線 */
@@ -346,93 +328,8 @@ function finishLine(tr, n, iApex) {
   return { n, px, py, seg, dist, kap: ks, iApex, length: dist[N - 1] };
 }
 
-/* 車両 */
-function deriveCar(p) {
-  const m = p.mass, eff = 0.78;
-  return { m, wf: p.wf / 100, h: p.h, L: p.L, tf: p.tf, tr: p.tr, mu: p.mu, ks: 0.15, rs: p.rs / 100,
-    Peff: p.ps * 735.5 * eff, CdA: p.cda, ClA: p.cla, aeroF: 0.45, drive: p.drive, Fz0: m * G / 4,
-    rollGrad: p.rollGrad, pitchGrad: p.pitchGrad };
-}
-function wheelLoads(car, v, ax, ay) {
-  const down = 0.5 * RHO * car.ClA * v * v, lt = car.m * ax * car.h / car.L;
-  let Ff = car.m * G * car.wf - lt + down * car.aeroF, Fr = car.m * G * (1 - car.wf) + lt + down * (1 - car.aeroF);
-  if (Ff < 0) { Fr += Ff; Ff = 0; } if (Fr < 0) { Ff += Fr; Fr = 0; }
-  const M = car.m * ay * car.h;
-  const dF = clamp(M * car.rs / car.tf, -Ff / 2, Ff / 2), dR = clamp(M * (1 - car.rs) / car.tr, -Fr / 2, Fr / 2);
-  return [Ff / 2 - dF, Ff / 2 + dF, Fr / 2 - dR, Fr / 2 + dR]; /* 左前, 右前, 左後, 右後 */
-}
-function tireCap(car, F) { return car.mu * F * Math.max(0.6, 1 + car.ks - car.ks * F / car.Fz0); }
-function dragForce(car, v) { return 0.5 * RHO * car.CdA * v * v + 0.015 * car.m * G; }
-
-/* タイヤの使用状況。ok=グリップ内に収まる */
-function tireState(car, v, ax, ay) {
-  const Fz = wheelLoads(car, v, ax, ay);
-  const capF = tireCap(car, Fz[0]) + tireCap(car, Fz[1]), capR = tireCap(car, Fz[2]) + tireCap(car, Fz[3]);
-  const Fx = car.m * ax + dragForce(car, v), FyF = car.m * Math.abs(ay) * car.wf, FyR = car.m * Math.abs(ay) * (1 - car.wf);
-  let FxF, FxR, ok;
-  if (Fx > 0 && car.drive === 'FR') { FxF = 0; FxR = Fx; }
-  else if (Fx > 0 && car.drive === 'FF') { FxF = Fx; FxR = 0; }
-  else {
-    const remF = Math.sqrt(Math.max(capF * capF - FyF * FyF, 0)), remR = Math.sqrt(Math.max(capR * capR - FyR * FyR, 0));
-    const sum = remF + remR;
-    FxF = sum > 0 ? Fx * remF / sum : Fx / 2; FxR = Fx - FxF;
-  }
-  const uF = Math.hypot(FxF, FyF) / Math.max(capF, 1), uR = Math.hypot(FxR, FyR) / Math.max(capR, 1);
-  ok = uF <= 1.0001 && uR <= 1.0001;
-  return { Fz, uF, uR, ok };
-}
-function axMax(car, v, ay) {
-  const drag = dragForce(car, v), aE = (car.Peff / Math.max(v, 15) - drag) / car.m;
-  if (tireState(car, v, aE, ay).ok) return aE;
-  let lo = -drag / car.m, hi = aE;
-  if (!tireState(car, v, lo, ay).ok) return lo;
-  for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; if (tireState(car, v, mid, ay).ok) lo = mid; else hi = mid; }
-  return lo;
-}
-function axMin(car, v, ay) {
-  let hi = -dragForce(car, v) / car.m, lo = -3 * G;
-  if (!tireState(car, v, hi, ay).ok) return hi;
-  for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; if (tireState(car, v, mid, ay).ok) hi = mid; else lo = mid; }
-  return hi;
-}
-function vLimit(car, kap) {
-  const k = Math.abs(kap); if (k < 1e-5) return 95;
-  let lo = 3, hi = 95;
-  if (tireState(car, hi, 0, hi * hi * k).ok) return hi;
-  for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; if (tireState(car, mid, 0, mid * mid * k).ok) lo = mid; else hi = mid; }
-  return lo;
-}
-
-/* 準定常の速度プロファイル: 限界速度 → 加速側 → 減速側 */
-function simulate(tr, line, car, vEntry) {
-  const N = tr.N, vl = new Float64Array(N), v = new Float64Array(N);
-  for (let i = 0; i < N; i++) vl[i] = vLimit(car, line.kap[i]);
-  v[0] = Math.min(vEntry, vl[0]);
-  for (let i = 0; i < N - 1; i++) {
-    const a = axMax(car, v[i], v[i] * v[i] * line.kap[i]);
-    v[i + 1] = Math.min(Math.sqrt(Math.max(v[i] * v[i] + 2 * a * line.seg[i], 9)), vl[i + 1]);
-  }
-  for (let i = N - 1; i > 0; i--) {
-    const a = axMin(car, v[i], v[i] * v[i] * line.kap[i]);
-    const vb = Math.sqrt(v[i] * v[i] - 2 * a * line.seg[i - 1]);
-    if (vb < v[i - 1]) v[i - 1] = vb;
-  }
-  const ax = new Float64Array(N), ay = new Float64Array(N), t = new Float64Array(N);
-  for (let i = 0; i < N - 1; i++) {
-    ax[i] = (v[i + 1] * v[i + 1] - v[i] * v[i]) / (2 * line.seg[i]);
-    t[i + 1] = t[i] + line.seg[i] / ((v[i] + v[i + 1]) / 2);
-  }
-  ax[N - 1] = ax[N - 2];
-  for (let i = 0; i < N; i++) ay[i] = v[i] * v[i] * line.kap[i];
-  let iMin = 0; for (let i = 1; i < N; i++) if (v[i] < v[iMin]) iMin = i;
-  let iBrake = -1; for (let i = 0; i < iMin; i++) if (ax[i] < -0.3 * G) { iBrake = i; break; }
-  let ayMax = 0; for (let i = 0; i < N; i++) ayMax = Math.max(ayMax, Math.abs(ay[i]));
-  return { v, ax, ay, t, time: t[N - 1], iMin, vMin: v[iMin], vExit: v[tr.iB], vEnd: v[N - 1], iBrake, ayMax,
-    tIn: t[tr.iA], tCorner: t[tr.iB] - t[tr.iA], tOut: t[N - 1] - t[tr.iB] };
-}
 function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); return { line, sim: simulate(tr, line, car, vEntry) }; }
 
-if (typeof module !== 'undefined') module.exports = { buildTrack, makeLine, deriveCar, simulate, runLine, tireState, wheelLoads, G };
 /* ===== 画面 ===== */
 (function () {
   const $ = id => document.getElementById(id);
@@ -480,12 +377,12 @@ if (typeof module !== 'undefined') module.exports = { buildTrack, makeLine, deri
       ['pitchGrad', 'ピッチ率', '°/G', 0.5, 4, 0.1, 1]
     ],
     corner: [
-      ['R', 'コーナー半径（コース中央）', 'm', 15, 200, 1, 0],
+      ['R', 'コーナー半径（コース中央）', 'm', 5, 200, 1, 0],
       ['angDeg', '曲がる角度', '°', 30, 180, 5, 0],
-      ['W', 'コース幅', 'm', 8, 16, 0.5, 1],
+      ['W', 'コース幅', 'm', 3, 16, 0.5, 1],
       ['Ls', '進入ストレートの長さ', 'm', 60, 300, 10, 0],
       ['Le', '立ち上がりストレートの長さ', 'm', 50, 600, 10, 0],
-      ['vIn', '区間に入るときの速度', 'km/h', 60, 220, 5, 0]
+      ['vIn', '区間に入るときの速度', 'km/h', 20, 220, 5, 0]
     ],
     my: [
       ['apex', 'エイペックスの位置（コーナーの何%地点か）', '%', 20, 85, 1, 0],
@@ -510,6 +407,26 @@ if (typeof module !== 'undefined') module.exports = { buildTrack, makeLine, deri
     }
   } catch (e) { /* 保存なしでも動く */ }
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(P)); } catch (e) { /* 保存不可でも続行 */ } };
+
+  /* 区間モード（section.html）からの引き継ぎ: URL の R / angDeg / W / vIn があれば、復元した条件に上書きする。
+     各スライダーの範囲に収め、処理したらアドレスから消す（再読み込みで条件が固定されないように） */
+  (function applyUrlParams() {
+    let q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+    const lim = { R: [5, 200, 1], angDeg: [30, 180, 5], W: [3, 16, 0.5], vIn: [20, 220, 5] };   /* 峠のきついコーナー・狭い道・低い入口速度も受ける（FIELDS.corner と同じ範囲） */
+    let got = false;
+    for (const k in lim) {
+      const raw = q.get(k); if (raw == null || raw.trim() === '') continue;
+      const v = Number(raw); if (!isFinite(v)) continue;
+      const [lo, hi, st] = lim[k];
+      P.corner[k] = Math.max(lo, Math.min(hi, Math.round(v / st) * st));   /* スライダーの刻みに丸める */
+      got = true;
+    }
+    if (!got) return;
+    P.corner.Ls = CORNER_PRESETS.mid.v.Ls; P.corner.Le = CORNER_PRESETS.mid.v.Le;   /* 進入・立ち上がりの直線は渡さない（既定値） */
+    P.cornerPreset = 'custom';
+    restored = false;   /* 前回のマイラインは別のコーナー用なので、引き継いだ条件で探し直す（起動時の autoSearch） */
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* 失敗しても続行 */ }
+  })();
 
   let tr, car, RES = [], sweep = null, scrub = 0, userScrub = false, ctxSpeed = null, ctxDelta = null, ctxMap = null, ctxGG = null;
   const resOf = id => RES.find(r => r.id === id);
@@ -765,7 +682,7 @@ if (typeof module !== 'undefined') module.exports = { buildTrack, makeLine, deri
   /* G-G 線図 */
   function renderGG() {
     const el = $('gg'), w = el.clientWidth || 300, h = el.clientHeight || 230, sel = resOf(P.sel);
-    const gm = Math.ceil((car.mu + 0.3) * 2) / 2, rad = Math.min(w, h) / 2 - 22, cx = w / 2, cy = h / 2, k = rad / gm;
+    const gm = Math.ceil((car.mu + 0.3) * 2) / 2, rad = Math.max(0, Math.min(w, h) / 2 - 22), cx = w / 2, cy = h / 2, k = rad / gm;
     let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="選択中のラインの前後Gと横Gの軌跡">';
     for (let g = 0.5; g <= gm + 1e-9; g += 0.5) s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + g * k + '" fill="none" stroke="var(--grid)"/><text x="' + (cx + 3) + '" y="' + (cy - g * k + 11) + '">' + g.toFixed(1) + ' G</text>';
     s += '<line x1="' + (cx - rad) + '" x2="' + (cx + rad) + '" y1="' + cy + '" y2="' + cy + '" stroke="var(--axis)"/><line x1="' + cx + '" x2="' + cx + '" y1="' + (cy - rad) + '" y2="' + (cy + rad) + '" stroke="var(--axis)"/>';
