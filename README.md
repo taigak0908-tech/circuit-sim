@@ -29,7 +29,7 @@
 経路が3回続けて取れないときは「手動で道をなぞる」で、道の上を数点クリックして線を引ける。
 
 ## 動かし方
-- 公開URL / 元の場所（1コーナーモード）: https://claude.ai/artifact/Mo3douFiqpAVbdmAyWufUR
+- 元の場所（1コーナー版のアーティファクト）: https://claude.ai/artifact/Mo3douFiqpAVbdmAyWufUR （区間モード `section.html` はまだ公開していない）
 - ローカル:
   - `index.html` はファイルをそのままブラウザで開ける
   - `section.html` と `test.html` は **http で開く**。地図タイル・経路 API（OSRM）・道幅 API（Overpass）への通信や、テストファイルの取得が `file://` だと動かないため。例:
@@ -40,7 +40,7 @@
 - 区間モードはネットワークが必要（地図・経路取得）。ビルドは無く、Leaflet は CDN から読む
 
 ## テスト
-- `npm test`（Node 18 以上）: `test/*.test.js` を `node --test` で実行する
+- `npm test`（Node 21 以上（確認は 24）。`node --test` にファイルの glob を渡すため）: `test/*.test.js` を `node --test` で実行する
 - `test.html` をブラウザで開く（http で）: 同じテストをブラウザで走らせ、✅／❌と合計を表示する。`test/physics.test.js`（`index.html` のエンジン部をファイルとして読む回帰テスト）だけは Node（`npm test`）でのみ走る
 - 切り出し前に記録した区間タイムを取り直すときは `test/regress-record.js`（物理計算を意図して変えたときだけ）
 
