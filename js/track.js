@@ -1,6 +1,11 @@
 /* ===== 地図座標 → 中心線・法線・曲率（DOM非依存・ブラウザではグローバル関数、Node では module.exports） ===== */
 const EARTH_R = 6371000;
 
+/* 中心線の位置を移動平均で平滑化する半窓(m)。経路APIの折れ線は点間隔が 12m ほどあり、線形補間しただけでは
+   頂点で中心線が鋭く折れる（実在の峠で最小半径 1.9m・基準タイムが非現実的に遅くなった）。±6m でならすと
+   最小半径が実際の道に近い 5m 前後になる。曲率だけを平滑化しても、折れた位置そのものは直らない */
+const SMOOTH_POS = 6;
+
 /* 緯度経度の列を、重心を原点とする平面座標(m)にする（正距円筒。x=東, y=北）。
    latlngs は [lat,lng] の配列でも {lat,lng} のオブジェクトでもよい。 */
 function toLocalXY(latlngs) {
@@ -57,6 +62,19 @@ function smooth(arr, halfWin) {
     let s = 0;
     for (let j = a; j <= b; j++) s += arr[j];
     out[i] = s / (b - a + 1);
+  }
+  return out;
+}
+
+/* 位置用の移動平均。smooth と違い、端では窓を左右対称に縮める（端の点は窓が 0 になり動かない）。
+   smooth のように片側だけ縮めると、端の点が内側へ halfWin/2 ほどずれて全長が縮み、始点・終点が動いてしまう */
+function smoothPos(arr, halfWin) {
+  const n = arr.length, out = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const h = Math.min(halfWin, i, n - 1 - i);
+    let s = 0;
+    for (let j = i - h; j <= i + h; j++) s += arr[j];
+    out[i] = s / (2 * h + 1);
   }
   return out;
 }
@@ -131,7 +149,9 @@ function laneBounds(W, mode) {
 function buildTrackFromPath(latlngs, opt) {
   const W = opt && opt.W != null ? opt.W : 6.0, mode = opt && opt.mode ? opt.mode : 'full';
   const { xs, ys, origin } = toLocalXY(latlngs);
-  const { cx, cy, st } = resample(xs, ys, 1.0);
+  const r1 = resample(xs, ys, 1.0);
+  /* 位置を平滑化して頂点を丸める。平滑化で弧長が縮むので、もう一度 1m 刻みに揃える（st[i] = i を保つ） */
+  const { cx, cy, st } = resample(smoothPos(r1.cx, SMOOTH_POS), smoothPos(r1.cy, SMOOTH_POS), 1.0);
   const N = cx.length;
   if (N < 2) return { error: 'short', total: 0 };
   const total = st[N - 1];

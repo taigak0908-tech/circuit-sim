@@ -189,3 +189,48 @@ test('全長80mは {error:"short"}、5kmを超えると {error:"long"}', () => {
   const l = buildTrackFromPath([[35, 139], [35.05, 139]], {});
   assert.equal(l.error, 'long'); assert.ok(l.total > 5000);
 });
+
+/* ===== 中心線の位置平滑化（折れ線の頂点を丸める） ===== */
+
+/* 直線 60m → 頂点で turnDeg°（左）曲がる → 直線 60m を、12m 間隔の点列（頂点で折れる折れ線）として作る。
+   OSRM の道路形状の再現。turnDeg 省略時は 90° */
+function polylineCorner(turnDeg) {
+  const a = (turnDeg == null ? 90 : turnDeg) * Math.PI / 180, xs = [], ys = [];
+  let x = 0, y = 0;
+  xs.push(x); ys.push(y);
+  for (let i = 0; i < 5; i++) { x += 12; xs.push(x); ys.push(y); }
+  for (let i = 0; i < 5; i++) { x += 12 * Math.cos(a); y += 12 * Math.sin(a); xs.push(x); ys.push(y); }
+  return { xs, ys };
+}
+
+test('折れ線の鋭い頂点が丸められる（最小半径4m以上・コーナー1つ・旋回角が頂点の角度に合う）', () => {
+  const tr = buildTrackFromPath(toLatLngs(polylineCorner()), {});
+  assert.ok(!tr.error, 'error: ' + tr.error);
+  let kMax = 0;
+  for (let i = 0; i < tr.N; i++) kMax = Math.max(kMax, Math.abs(tr.kap[i]));
+  const minR = 1 / kMax;
+  assert.ok(minR >= 4, 'minR ' + minR);
+  assert.equal(tr.corners.length, 1);
+  assert.ok(tr.corners[0].angDeg >= 80 && tr.corners[0].angDeg <= 100, 'angDeg ' + tr.corners[0].angDeg);
+  /* 位置を平滑化しないと、1m 刻みの折れ線では 3 点の円による曲率が頂点の折れ角を過小に見積もる
+     （90° の頂点が 81°、150° が 111° になる）。平滑化後は頂点の角度どおりに出る */
+  assert.ok(Math.abs(tr.corners[0].angDeg - 90) <= 5, '90°の頂点の angDeg ' + tr.corners[0].angDeg);
+  const sharp = buildTrackFromPath(toLatLngs(polylineCorner(150)), {});
+  assert.equal(sharp.corners.length, 1);
+  assert.ok(Math.abs(sharp.corners[0].angDeg - 150) <= 5, '150°の頂点の angDeg ' + sharp.corners[0].angDeg);
+});
+
+test('始点・終点の位置は平滑化でほぼ動かない（1.0m以内）', () => {
+  const ll = toLatLngs(polylineCorner());
+  const tr = buildTrackFromPath(ll, {});
+  assert.ok(!tr.error, 'error: ' + tr.error);
+  /* tr.cx/cy は重心原点の xy なので、元の点列も同じ重心原点に直して比べる。
+     比べる相手は「平滑化前の 1m 刻み中心線」の始点・終点。resample は終点を含めず（全長の端数は切り捨て）、
+     平滑化の後にもう一度 resample するので、終点は最大 1m 手前になる。平滑化そのものが動かすのはこの端数だけ */
+  const { xs, ys } = toLocalXY(ll);
+  const r = resample(xs, ys, 1.0), last = r.cx.length - 1, N = tr.N;
+  const d0 = Math.hypot(tr.cx[0] - r.cx[0], tr.cy[0] - r.cy[0]);
+  const d1 = Math.hypot(tr.cx[N - 1] - r.cx[last], tr.cy[N - 1] - r.cy[last]);
+  assert.ok(d0 <= 1.0, '始点のずれ ' + d0);
+  assert.ok(d1 <= 1.0, '終点のずれ ' + d1);
+});
