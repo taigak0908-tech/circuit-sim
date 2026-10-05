@@ -21,11 +21,12 @@
     start: '地図をクリックして始点を置きます',
     end: '地図をクリックして終点を置きます',
     via: '地図をクリックして経由点を置きます',
-    manual: '道に沿って地図を順にクリックします（2点以上で線を引きます）'
+    manual: '道に沿って地図を順にクリックします（2点以上で線を引きます）',
+    measure: '航空写真の上で、道の左端と右端を順にクリックします'
   };
   const HINT_IDLE = 'ボタンで点の種類を選び、地図をクリックします';
 
-  /* 状態。mode は null | 'start' | 'end' | 'via' | 'manual' */
+  /* 状態。mode は null | 'start' | 'end' | 'via' | 'manual' | 'measure' */
   const S = {
     mode: null,
     points: { start: null, end: null, vias: [] },
@@ -33,6 +34,8 @@
     manual: false,       // いま手動モードの点を使っているか
     latlngs: null, tr: null,
     W: 6, laneMode: 'full', vIn: 60,
+    wTouched: false,     // 幅を自分で決めたか（スライダー・計測・保存の読み込み）。false の間だけ OSM タグの幅を初期値に使う
+    measureP: null,      // 幅の計測の1点目
     preset: 'grb', carP: Object.assign({}, CAR_PRESETS.grb.v), car: null,   // carP = 車のパラメータ、car = deriveCar の結果
     params: [],          // 自分のライン（コーナーごと {apex,inside,hold}）。tr ができるたび既定値に戻す
     paramsEdited: false, // スライダーを触ったか。触っていなければ最速の探索が終わったとき自分のラインも最速に揃える
@@ -73,9 +76,12 @@
   }
 
   /* ---------- モード切替・ボタン表示 ---------- */
-  const MODE_BTN = { start: 'btn-start', end: 'btn-end', via: 'btn-via', manual: 'btn-manual' };
+  const MODE_BTN = { start: 'btn-start', end: 'btn-end', via: 'btn-via', manual: 'btn-manual', measure: 'btn-measure' };
   function setMode(m) {
-    S.mode = m;
+    const prev = S.mode;
+    S.mode = m; S.measureP = null; api.measureLine(null);   // 計測の途中の点は、モードを変えたら捨てる
+    if (m === 'measure') { setBase('aerial'); showMsg('道の左端と右端をクリックしてください', { info: true }); }
+    else if (prev === 'measure') showMsg(null);
     Object.keys(MODE_BTN).forEach(k => $(MODE_BTN[k]).setAttribute('aria-pressed', String(k === m)));
     $('map-hint').textContent = m ? HINTS[m] : HINT_IDLE;
     api.map.getContainer().style.cursor = m ? 'crosshair' : '';
@@ -360,26 +366,46 @@
     if (n === 0) showMsg('ほぼ直線です', { info: true }); else showMsg(null);
   }
 
+  /* 経路を取って区間を作り直す。tr ができたら true（保存の読み込みが続きを判断する） */
   async function rebuildRoute() {
     const { start, end, vias } = S.points;
-    if (!start || !end) return;
+    if (!start || !end) return false;
     const seq = ++S.seq;
     showMsg('経路を取得中…', { info: true });
     let r;
     try {
       r = await fetchRoute([start, ...vias, end]);
     } catch (e) {
-      if (seq !== S.seq) return;
+      if (seq !== S.seq) return false;
       S.failCount++; updateManualBtn(); clearRouteView();
       showMsg(e.message === 'noroute'
         ? '道路としてつながっていません。経由点を足すか始点を少しずらしてください'
         : '経路を取れませんでした（' + S.failCount + '回目）', { retry: true });
-      return;
+      return false;
     }
-    if (seq !== S.seq) return;
+    if (seq !== S.seq) return false;
     S.failCount = 0; updateManualBtn();
     S.latlngs = r.latlngs;
     rebuildTrack(true);
+    if (!S.tr) return false;
+    if (!S.wTouched) applyOsmWidth(seq);
+    return true;
+  }
+
+  /* 幅を m（0.1 刻み・3〜12 に丸め）でスライダーと S.W に入れ、tr を作り直す。実際に入れた値を返す */
+  function setWidth(w) {
+    const v = Math.min(12, Math.max(3, Math.round(w * 10) / 10));
+    S.W = v; $('f-W').value = String(v); $('o-W').textContent = v.toFixed(1);
+    rebuildTrack(false);
+    return v;
+  }
+  /* OSM タグの幅を、区間の中点で1回だけ取って初期値にする（自分で幅を決めていたら使わない） */
+  async function applyOsmWidth(seq) {
+    const tr = S.tr, mid = trackToLatLngs(tr)[tr.N >> 1];
+    const w = await fetchOsmWidth(mid.lat, mid.lng);
+    if (w == null || seq !== S.seq || S.wTouched || S.tr !== tr) return;   // 取れない・古い応答・もう触った・区間が変わった
+    const v = setWidth(w);
+    showMsg('地図データの幅 ' + v.toFixed(1) + ' m を初期値にしました', { info: true });
   }
 
   function useManualRoute() {
@@ -391,7 +417,7 @@
   function clearAll() {
     ++S.seq;
     S.points = { start: null, end: null, vias: [] };
-    S.manualPts = []; S.manual = false;
+    S.manualPts = []; S.manual = false; S.wTouched = false;
     clearRouteView(); api.setMarkers(null); showMsg(null); setMode(null);
   }
 
@@ -399,6 +425,14 @@
   api.onMapClick(p => {
     const m = S.mode;
     if (!m) return;
+    if (m === 'measure') {
+      if (!S.measureP) { S.measureP = p; api.measureLine(p, null); return; }
+      const d = api.map.distance(S.measureP, p);
+      S.wTouched = true; setMode(null);
+      const v = setWidth(d);
+      showMsg(Math.abs(v - d) > 0.05 ? '測った幅 ' + d.toFixed(1) + ' m は範囲外のため ' + v.toFixed(1) + ' m にしました' : '幅 ' + v.toFixed(1) + ' m を入れました', { info: true });
+      return;
+    }
     if (m === 'manual') {
       S.manual = true; S.manualPts.push(p); updateMarkers();
       if (S.manualPts.length >= 2) useManualRoute();
@@ -421,6 +455,7 @@
   $('btn-start').addEventListener('click', () => toggleMode('start'));
   $('btn-end').addEventListener('click', () => toggleMode('end'));
   $('btn-via').addEventListener('click', () => toggleMode('via'));
+  $('btn-measure').addEventListener('click', () => toggleMode('measure'));
   $('btn-manual').addEventListener('click', () => {
     if (S.mode === 'manual') { setMode(null); return; }
     S.manualPts = []; S.manual = true; ++S.seq;     // 手動は新しい線から始める
@@ -438,7 +473,7 @@
   $('base-aerial').addEventListener('click', () => setBase('aerial'));
 
   $('f-W').addEventListener('input', e => {
-    S.W = parseFloat(e.target.value); $('o-W').textContent = S.W.toFixed(1);
+    S.W = parseFloat(e.target.value); $('o-W').textContent = S.W.toFixed(1); S.wTouched = true;
     rebuildTrack(false);
   });
   function setLaneMode(m) {
@@ -510,6 +545,77 @@
   }
   if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.tr && S.results) renderMapLines(); });
 
+  /* ---------- 区間の保存・一覧・読み込み・削除（store.js） ---------- */
+  function renderSaved() {
+    const ul = $('sec-list'), list = sectionStore.listSections();
+    ul.textContent = '';
+    if (!list.length) { const li = document.createElement('li'); li.className = 'sub'; li.textContent = '保存した区間はありません'; ul.appendChild(li); return; }
+    list.forEach(s => {
+      const li = document.createElement('li'), nm = document.createElement('strong'), info = document.createElement('span'), row = document.createElement('div');
+      nm.textContent = s.name;
+      info.className = 'sub num';
+      info.textContent = new Date(s.savedAt).toLocaleString('ja-JP') + ' ・ ' + Math.round(s.total) + ' m';
+      row.className = 'seg c2';
+      [['open', '開く'], ['del', '削除']].forEach(([act, label]) => {
+        const b = document.createElement('button'); b.type = 'button'; b.dataset.act = act; b.dataset.id = s.id; b.textContent = label; row.appendChild(b);
+      });
+      li.append(nm, info, row); ul.appendChild(li);
+    });
+  }
+  function saveCurrent() {
+    const name = $('sec-name').value.trim();
+    if (!name) { showMsg('名前を入れてください'); return; }
+    if (!S.tr) { showMsg('区間を作ってから保存してください'); return; }
+    const same = sectionStore.listSections().find(s => s.name === name);   // 同じ名前は上書き（id を引き継ぐ）
+    const points = S.manual
+      ? { start: null, end: null, vias: [], manual: S.manualPts.map(p => ({ lat: p.lat, lng: p.lng })) }
+      : { start: S.points.start, end: S.points.end, vias: S.points.vias.slice() };
+    const id = sectionStore.saveSection({
+      id: same && same.id, name, points, manual: S.manual, W: S.W, laneMode: S.laneMode, vIn: S.vIn,
+      preset: S.preset, carP: Object.assign({}, S.carP), params: S.params.map(p => Object.assign({}, p)), paramsEdited: S.paramsEdited, total: S.tr.total
+    });
+    renderSaved();
+    if (id == null) showMsg('保存できませんでした（ブラウザの保存領域が使えません）');
+    else showMsg('保存しました', { info: true });
+  }
+  async function openSaved(id) {
+    const d = sectionStore.getSection(id);
+    if (!d || !d.points) return;
+    clearAll();   // 点・経路・結果を片付けて、幅の「触った」印も戻す
+    S.wTouched = true;   // 保存した幅を使う（OSM タグで上書きしない）
+    S.W = Math.min(12, Math.max(3, +d.W || 6)); $('f-W').value = String(S.W); $('o-W').textContent = S.W.toFixed(1);
+    S.laneMode = d.laneMode === 'lane' ? 'lane' : 'full';
+    $('mode-full').setAttribute('aria-pressed', String(S.laneMode === 'full')); $('mode-lane').setAttribute('aria-pressed', String(S.laneMode === 'lane'));
+    S.vIn = +d.vIn || 60; $('f-vIn').value = String(S.vIn); $('o-vIn').textContent = String(S.vIn);
+    S.preset = CAR_PRESETS[d.preset] || (d.preset === 'custom' && d.carP) ? d.preset : 'grb';   // 不明な車種は GRB に戻す
+    S.carP = Object.assign({}, CAR_PRESETS[S.preset] ? CAR_PRESETS[S.preset].v : d.carP);
+    S.car = deriveCar(S.carP); $('f-preset').value = S.preset; $('f-drive').value = S.carP.drive;
+    $('sec-name').value = d.name;
+    let ok;
+    if (d.manual) {
+      S.manual = true; S.manualPts = (d.points.manual || []).map(p => ({ lat: p.lat, lng: p.lng })); updateMarkers();
+      if (S.manualPts.length < 2) { showMsg('保存された点が足りません'); return; }
+      useManualRoute(); api.fitRoute(); ok = !!S.tr;
+    } else {
+      S.points = { start: d.points.start, end: d.points.end, vias: (d.points.vias || []).slice() }; updateMarkers();
+      ok = await rebuildRoute();
+    }
+    if (!ok || !S.tr) return;
+    if (d.paramsEdited && Array.isArray(d.params) && d.params.length === S.tr.corners.length) {   // コーナー数が変わっていたら最速に任せる
+      S.params = d.params.map(p => Object.assign({}, p)); S.paramsEdited = true; syncMyUI(); schedule();
+    }
+    const now = S.tr.total;
+    if (d.total > 0 && Math.abs(now - d.total) / d.total > 0.05) showMsg('道路データが変わっています（保存時 ' + Math.round(d.total) + ' m → いま ' + Math.round(now) + ' m）', { info: true });
+  }
+  $('btn-save').addEventListener('click', saveCurrent);
+  $('sec-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveCurrent(); } });
+  $('sec-list').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    if (b.dataset.act === 'open') openSaved(b.dataset.id);
+    else { sectionStore.deleteSection(b.dataset.id); renderSaved(); }   // 個人用ツールなので確認なしで削除
+  });
+
   setMode(null);
   syncMyUI(true);
+  renderSaved();
 })();
