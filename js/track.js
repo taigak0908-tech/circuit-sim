@@ -86,10 +86,11 @@ function curvature(cx, cy) {
 }
 
 /* 平滑化済みの曲率 kap から、コーナー（|κ| が kMin を超える連続区間）を検出する。
-   minLen 未満の区間は捨て、同じ向きで間が mergeGap 未満の区間は1つにまとめる（向きが違えば隙間 0 でもまとめない）。
+   minLen 未満の区間は捨て、同じ向きで間が mergeGap 未満の区間は1つにまとめ（向きが違えば隙間 0 でもまとめない）、
+   まとめた後に旋回角が minAng(°) 未満のものを捨てる（ノイズ由来の偽コーナー除け）。
    戻り値: [{no(1始まり), dir('L'|'R'), i0, i1, s0, s1, rMin(区間内の最小旋回半径 m), angDeg(区間の旋回角 °)}] */
 function detectCorners(kap, ds, opt) {
-  const o = Object.assign({ kMin: 1 / 150, minLen: 8, mergeGap: 15 }, opt);
+  const o = Object.assign({ kMin: 1 / 150, minLen: 8, mergeGap: 15, minAng: 10 }, opt);
   const n = kap.length, cand = [];
   let i = 0;
   while (i < n) {
@@ -107,11 +108,15 @@ function detectCorners(kap, ds, opt) {
     if (prev && prev.dir === c.dir && (c.i0 - prev.i1) * ds < o.mergeGap) prev.i1 = c.i1;
     else merged.push({ i0: c.i0, i1: c.i1, dir: c.dir });
   }
-  return merged.map((c, k) => {
+  const out = [];
+  for (const c of merged) {
     let kMax = 0, ang = 0;
     for (let j = c.i0; j <= c.i1; j++) { const a = Math.abs(kap[j]); if (a > kMax) kMax = a; ang += a * ds; }
-    return { no: k + 1, dir: c.dir, i0: c.i0, i1: c.i1, s0: c.i0 * ds, s1: c.i1 * ds, rMin: 1 / kMax, angDeg: ang * 180 / Math.PI };
-  });
+    const angDeg = ang * 180 / Math.PI;
+    if (angDeg < o.minAng) continue;
+    out.push({ no: out.length + 1, dir: c.dir, i0: c.i0, i1: c.i1, s0: c.i0 * ds, s1: c.i1 * ds, rMin: 1 / kMax, angDeg });
+  }
+  return out;
 }
 
 /* 走行できる横位置の範囲（進行方向の右が正）。コース幅 W の端から 1m（車幅の半分ほど）内側まで。

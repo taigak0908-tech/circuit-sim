@@ -86,8 +86,8 @@ test('headingAndNormal は進行方向の右を正の法線にする', () => {
 
 /* 東向きに出発して、直線と円弧をつないだ中心線（平面 xy）を作る。0.5m 刻みで点を打つ。
    steps: ['s', 長さm] / ['L'|'R', 半径m, 角度°]。
-   noise>0 なら spacing m 間隔に間引いた各点の xy に、±noise m 以内の決定的な擬似乱数を足す */
-function course(steps, noise, spacing) {
+   noise>0 なら spacing m 間隔に間引いた各点の xy に、±noise m 以内の決定的な擬似乱数を足す（phase でノイズの位相をずらす） */
+function course(steps, noise, spacing, phase) {
   const h = 0.5;
   let x = 0, y = 0, hd = 0;
   const xs = [x], ys = [y];
@@ -100,10 +100,10 @@ function course(steps, noise, spacing) {
     }
   }
   if (!noise) return { xs, ys };
-  const step = Math.round(spacing / h), nx = [], ny = [];
+  const step = Math.round(spacing / h), ph = phase || 0, nx = [], ny = [];
   for (let i = 0; i < xs.length; i += step) {
-    nx.push(xs[i] + Math.sin(i * 12.9898) * noise);
-    ny.push(ys[i] + Math.sin(i * 78.233 + 1) * noise);
+    nx.push(xs[i] + Math.sin(i * (12.9898 + ph)) * noise);
+    ny.push(ys[i] + Math.sin(i * (78.233 + ph) + 1) * noise);
   }
   return { xs: nx, ys: ny };
 }
@@ -142,14 +142,29 @@ test('R=8m・180°のヘアピンが1コーナー、angDeg≈180±5', () => {
   assert.equal(tr.bHi, 0);
 });
 
-test('±1mのノイズを乗せても検出数と向きが変わらない', () => {
+test('±1mのノイズを乗せても検出数と向きが変わらない（ノイズ位相8通り）', () => {
   /* 点を 20m 間隔（地図を手でなぞる程度）に間引き、各点を ±1m の決定的な擬似乱数でずらす。
-     10m 以下の間隔だと、kMin=1/150 では ±1m のずれが小さな偽コーナーになる（検出側のしきい値の限界） */
+     10m 以下の間隔だと、±1m のずれが 10〜20° の偽コーナーになり minAng=10 でも除けない（検出側の限界） */
   const a = buildTrackFromPath(toLatLngs(course(SHAPE)), {});
-  const b = buildTrackFromPath(toLatLngs(course(SHAPE, 1.0, 20)), {});
-  assert.ok(!a.error && !b.error);
-  assert.equal(b.corners.length, a.corners.length);
-  assert.deepEqual(b.corners.map(c => c.dir), a.corners.map(c => c.dir));
+  assert.ok(!a.error);
+  for (let ph = 0; ph < 8; ph++) {
+    const b = buildTrackFromPath(toLatLngs(course(SHAPE, 1.0, 20, ph)), {});
+    assert.ok(!b.error, 'phase ' + ph);
+    assert.deepEqual(b.corners.map(c => c.dir), a.corners.map(c => c.dir), 'phase ' + ph);
+  }
+});
+
+test('minAng(10°) 未満の緩いカーブはコーナーに数えない', () => {
+  /* 1/100 を 9 点 = 0.09rad ≒ 5.2°（kMin・minLen は満たす）→ 捨てる。本物の 38° のコーナーの番号は 1 から振り直す */
+  const k = new Float64Array(80);
+  for (let i = 5; i < 14; i++) k[i] = 1 / 100;
+  assert.equal(detectCorners(k, 1.0).length, 0);
+  for (let i = 40; i < 60; i++) k[i] = -1 / 30;
+  const m = detectCorners(k, 1.0);
+  assert.equal(m.length, 1);
+  assert.equal(m[0].no, 1); assert.equal(m[0].dir, 'R');
+  /* minAng を下げれば数える */
+  assert.equal(detectCorners(k, 1.0, { minAng: 3 }).length, 2);
 });
 
 test('同方向コーナーが10m間隔なら1つにまとまる', () => {
