@@ -1,5 +1,5 @@
 const { test, assert } = require('./harness');
-const { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature, detectCorners, laneBounds, buildTrackFromPath } = require('../js/track');
+const { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature, detectCorners, laneBounds, buildTrackFromPath, smoothPos } = require('../js/track');
 
 /* 中心 (0,0)・半径 r の円周上に 1° 刻みで n 点。ccw=true なら反時計回り（左旋回） */
 function arc(r, n, ccw) {
@@ -203,13 +203,16 @@ function polylineCorner(turnDeg) {
   return { xs, ys };
 }
 
-test('折れ線の鋭い頂点が丸められる（最小半径4m以上・コーナー1つ・旋回角が頂点の角度に合う）', () => {
+test('折れ線の鋭い頂点が丸められる（中心線の生の最小半径4m以上・コーナー1つ・旋回角が頂点の角度に合う）', () => {
   const tr = buildTrackFromPath(toLatLngs(polylineCorner()), {});
   assert.ok(!tr.error, 'error: ' + tr.error);
+  /* 中心線そのものの最小半径（κ を平滑化する前の生曲率から）。位置を平滑化しないと 1m 刻みの折れ線では 0.7m 前後、
+     平滑化後は 4.5m 前後。tr.kap は κ を ±5m で平滑化済みなので、これだけでは修正前でも 7.8m で通ってしまう */
+  const raw = curvature(tr.cx, tr.cy);
   let kMax = 0;
-  for (let i = 0; i < tr.N; i++) kMax = Math.max(kMax, Math.abs(tr.kap[i]));
+  for (let i = 0; i < tr.N; i++) kMax = Math.max(kMax, Math.abs(raw[i]));
   const minR = 1 / kMax;
-  assert.ok(minR >= 4, 'minR ' + minR);
+  assert.ok(minR >= 4, '生の minR ' + minR);
   assert.equal(tr.corners.length, 1);
   assert.ok(tr.corners[0].angDeg >= 80 && tr.corners[0].angDeg <= 100, 'angDeg ' + tr.corners[0].angDeg);
   /* 位置を平滑化しないと、1m 刻みの折れ線では 3 点の円による曲率が頂点の折れ角を過小に見積もる
@@ -233,4 +236,12 @@ test('始点・終点の位置は平滑化でほぼ動かない（1.0m以内）'
   const d1 = Math.hypot(tr.cx[N - 1] - r.cx[last], tr.cy[N - 1] - r.cy[last]);
   assert.ok(d0 <= 1.0, '始点のずれ ' + d0);
   assert.ok(d1 <= 1.0, '終点のずれ ' + d1);
+});
+
+test('smoothPos は端の点を動かさず、点が1〜2個でも落ちない', () => {
+  const s = smoothPos([0, 3, 6, 9, 12], 2);
+  assert.deepEqual(Array.from(s), [0, 3, 6, 9, 12]); /* 等間隔の直線は端も内側も不変 */
+  assert.deepEqual(Array.from(smoothPos([0, 10, 0, 10, 0], 2)), [0, 10 / 3, 4, 10 / 3, 0]);
+  assert.deepEqual(Array.from(smoothPos([5], 6)), [5]);
+  assert.deepEqual(Array.from(smoothPos([5, 7], 6)), [5, 7]);
 });

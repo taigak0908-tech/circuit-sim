@@ -54,7 +54,8 @@ function resample(xs, ys, ds) {
   return { cx: Float64Array.from(cx), cy: Float64Array.from(cy), st: Float64Array.from(st) };
 }
 
-/* 窓 [i-halfWin, i+halfWin] の単純移動平均。端は窓を縮める（存在する点だけで平均） */
+/* 窓 [i-halfWin, i+halfWin] の単純移動平均。端は窓を縮める（存在する点だけで平均）。
+   端が内側へずれるので、位置の平滑化には使わない（smoothPos を使う） */
 function smooth(arr, halfWin) {
   const n = arr.length, out = new Float64Array(n);
   for (let i = 0; i < n; i++) {
@@ -164,4 +165,4 @@ function buildTrackFromPath(latlngs, opt) {
   return { N, ds: 1, cx, cy, nx, ny, st, kap, total, origin, corners, W, bLo, bHi, z: null };
 }
 
-if (typeof module !== 'undefined') module.exports = { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature, detectCorners, laneBounds, buildTrackFromPath };
+if (typeof module !== 'undefined') module.exports = { toLocalXY, xyToLatLng, resample, smooth, headingAndNormal, curvature, detectCorners, laneBounds, buildTrackFromPath, smoothPos };
