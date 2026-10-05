@@ -173,7 +173,9 @@ function createMap(el) {
     if (p2) { dot(p2); L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], { color: '#eda100', weight: 3, interactive: false }).addTo(measureLayer); }
   }
   function onMapClick(cb) { map.on('click', e => cb({ lat: e.latlng.lat, lng: e.latlng.lng })); }
-  function fitRoute() { if (routeLine) map.fitBounds(routeLine.getBounds(), { padding: [30, 30] }); }
+  /* 地図を経路全体に合わせる。アニメーションは使わない（アニメーションは requestAnimationFrame 頼みで、
+     直後の重い計算や、画面に出ていないタブでは止まって「合わない」ように見えるため。その場で合わせる） */
+  function fitRoute() { if (routeLine) map.fitBounds(routeLine.getBounds(), { padding: [30, 30], animate: false }); }
   function saveView() {
     try { const c = map.getCenter(); localStorage.setItem(VIEW_KEY, JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() })); } catch (e) { /* 保存できなくても動く */ }
   }
