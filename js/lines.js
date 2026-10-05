@@ -144,80 +144,130 @@ const APEX_GRID = [0.30, 0.40, 0.50, 0.55, 0.60, 0.70, 0.80];
 const INSIDE_GRID = [1.0, 0.7, 0.4];
 const HOLD_GRID = [0, 10, 20];
 const SEARCH_PASSES = 2;
+const WINDOW_EXT = 50;   // m。局所窓を前後のコーナーの外へ広げる距離
 
-/* コーナー c だけを格子（7×3×3=63通り）で試し、区間タイムが最短の {param, time} を返す。
+/* params で区間全体を解いて走らせる。{n, v, time}（局所窓の端の値と、比較の基準に使う） */
+function fullEval(tr, car, vEntry, params) {
+  const line = lineCustom(tr, params), sim = _phys.simulate(tr, line, car, vEntry);
+  return { n: line.n, v: sim.v, time: sim.time };
+}
+
+/* tr の点 a..b だけを取り出した tr（配列は subarray で共有。st は窓の先頭を 0 に平行移動）。
+   solveLineN / finishLineN / simulate が使う値だけを持つ。ピンは区間全体の pinsFromParams を切り出して渡すので corners は要らない */
+function subTrack(tr, a, b) {
+  const N = b - a + 1, st = new Float64Array(N);
+  for (let i = 0; i < N; i++) st[i] = tr.st[a + i] - tr.st[a];
+  return { N, ds: tr.ds, cx: tr.cx.subarray(a, b + 1), cy: tr.cy.subarray(a, b + 1), nx: tr.nx.subarray(a, b + 1), ny: tr.ny.subarray(a, b + 1),
+    kap: tr.kap ? tr.kap.subarray(a, b + 1) : null, st, total: st[N - 1], W: tr.W, bLo: tr.bLo, bHi: tr.bHi, corners: [] };
+}
+
+/* コーナー c の候補を「局所窓」で評価する関数を返す（trial の params → 窓のタイム）。
+   窓 = 前のコーナー c-1 の i0（無ければ 0）〜 次のコーナー c+1 の i1（無ければ N-1）を前後に WINDOW_EXT m 広げた [a, b]。
+   窓の両端 3 点は現在の全体解 cur の n にピンし（区間の端そのものなら全体と同じく自由）、
+   進入速度は cur の v[a]（区間の先頭なら vEntry）。区間全体を解くより窓が短いぶん速い */
+function windowEvaluator(tr, car, vEntry, c, cur) {
+  const K = tr.corners, ext = Math.round(WINDOW_EXT / tr.ds);
+  const a = Math.max(0, (c > 0 ? K[c - 1].i0 : 0) - ext);
+  const b = Math.min(tr.N - 1, (c < K.length - 1 ? K[c + 1].i1 : tr.N - 1) + ext);
+  const w = subTrack(tr, a, b), vIn = a === 0 ? vEntry : cur.v[a];
+  return trial => {
+    const pins = pinsFromParams(tr, trial).slice(a, b + 1);
+    for (let k = 0; k < 3; k++) {
+      if (a > 0) pins[k] = cur.n[a + k];
+      if (b < tr.N - 1) pins[w.N - 1 - k] = cur.n[b - k];
+    }
+    return _phys.simulate(w, solveLineN(w, pins), car, vIn).time;
+  };
+}
+
+/* コーナー c だけを格子（7×3×3=63通り）で試し、タイムが最短の {param, time} を返す。
+   cur（現在の全体解 {n, v, time}）を渡すと局所窓で評価し、time は窓のタイム。null なら区間全体で評価し、time は区間タイム。
    まず「現在の params[c]」をそのまま評価して基準にし、格子の候補は基準より厳密に速い（1e-9 超）ときだけ採用する。
    理由: 初期値（late の apex=0.65 など）は格子に含まれないので、基準に入れないと
-   「探索した結果が初期値より遅くなる」ことがある。これで各コーナー処理後のタイムは増えない。
-   同タイムなら先に見つけた方（現在値 → 格子順）を残す。
-   候補を1つ評価するたびに yield するジェネレータ（戻り値が結果）。非同期版はこの yield のところで時間を見て画面に制御を返す
-   （区間が長いと 1 コーナーぶんで 0.5〜1 秒かかり、まとめて走らせると画面が固まるため） */
-function* bestForCornerGen(tr, car, vEntry, params, c) {
-  let best = { param: params[c], time: runLineN(tr, car, vEntry, lineCustom(tr, params)).sim.time };
+   「探索した結果が初期値より遅くなる」ことがある。同タイムなら先に見つけた方（現在値 → 格子順）を残す。
+   候補を1つ評価するたびに yield するジェネレータ（戻り値が結果）。非同期版はこの yield のところで時間を見て画面に制御を返す */
+function* bestForCornerGen(tr, car, vEntry, params, c, cur) {
+  const timeOf = cur ? windowEvaluator(tr, car, vEntry, c, cur) : trial => runLineN(tr, car, vEntry, lineCustom(tr, trial)).sim.time;
+  let best = { param: params[c], time: timeOf(params) };
   yield;
   for (const apex of APEX_GRID) for (const inside of INSIDE_GRID) for (const hold of HOLD_GRID) {
     const trial = params.slice();
     trial[c] = { apex, inside, hold };
-    const time = runLineN(tr, car, vEntry, lineCustom(tr, trial)).sim.time;
+    const time = timeOf(trial);
     if (time < best.time - 1e-9) best = { param: trial[c], time };
     yield;
   }
   return best;
 }
-function bestForCorner(tr, car, vEntry, params, c) {
-  const g = bestForCornerGen(tr, car, vEntry, params, c);
+function bestForCorner(tr, car, vEntry, params, c, cur) {
+  const g = bestForCornerGen(tr, car, vEntry, params, c, cur);
   let r;
   while (!(r = g.next()).done);
   return r.value;
 }
 
-/* 同期版。defaultParams(late) から始め、コーナー順に他を固定して格子を総当たりし、これを2周する。{params, time} */
-function searchFastestSync(tr, car, vEntry) {
-  const C = tr.corners.length;
-  const params = defaultParams(tr, 'late');
-  if (C === 0) return { params, time: runLineN(tr, car, vEntry, lineCustom(tr, params)).sim.time };
-  let time = 0;
+/* 探索の状態 {params, cur, time, windowed}。defaultParams(late) から始める。windowed は opts.windowed（既定 true） */
+function searchInit(tr, car, vEntry, opts) {
+  const params = defaultParams(tr, 'late'), cur = fullEval(tr, car, vEntry, params);
+  return { params, cur, time: cur.time, windowed: !(opts && opts.windowed === false) };
+}
+/* コーナー c を1つ処理する（評価ごとに yield）。局所窓のときは、採用した params[c] で区間全体を解き直して cur を更新する
+   （各コーナーの最後に1回）。窓では速くても全体で遅くなった場合は元の値に戻す（各コーナー処理後のタイムは増えない） */
+function* searchStepGen(st, tr, car, vEntry, c) {
+  const g = bestForCornerGen(tr, car, vEntry, st.params, c, st.windowed ? st.cur : null);
+  let r;
+  while (!(r = g.next()).done) yield;
+  const prev = st.params[c];
+  if (!st.windowed) { st.params[c] = r.value.param; st.time = r.value.time; return; }
+  if (r.value.param === prev) return;
+  const trial = st.params.slice(); trial[c] = r.value.param;
+  const nx = fullEval(tr, car, vEntry, trial);
+  if (nx.time <= st.cur.time + 1e-9) { st.params[c] = r.value.param; st.cur = nx; st.time = nx.time; }
+}
+
+/* 同期版。コーナー順に他を固定して格子を総当たりし、これを2周する。{params, time}（time は区間全体のタイム）。
+   opts.windowed=false で候補を区間全体で評価する（旧来の方法。テストで局所窓と比べる） */
+function searchFastestSync(tr, car, vEntry, opts) {
+  const st = searchInit(tr, car, vEntry, opts), C = tr.corners.length;
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (let c = 0; c < C; c++) {
-      const b = bestForCorner(tr, car, vEntry, params, c);
-      params[c] = b.param; time = b.time;
+      const g = searchStepGen(st, tr, car, vEntry, c);
+      while (!g.next().done);
     }
   }
-  return { params, time };
+  return { params: st.params, time: st.time };
 }
 
 const SLICE_MS = 20;   // 非同期版が画面に制御を返す間隔（ms）。1 評価は最長でも十数 ms
 
 /* 非同期版。同じ探索を、SLICE_MS ごとに画面へ制御を返しながら進める（結果は同期版と同じ）。
-   opts = {onProgress(done,total), signal, sliceMs}。onProgress はコーナー1つ分ごと。sliceMs は制御を返す間隔（既定 SLICE_MS。テストでは 0 にして毎評価ごとに返す）。
+   opts = {onProgress(done,total), signal, sliceMs, windowed}。onProgress はコーナー1つ分ごと。sliceMs は制御を返す間隔（既定 SLICE_MS。テストでは 0 にして毎評価ごとに返す）。
    各コーナー処理の前と制御を返した直後に signal.aborted を見て、立っていれば {aborted:true} を返す */
 async function searchFastest(tr, car, vEntry, opts) {
   const { onProgress, signal, sliceMs = SLICE_MS } = opts || {};
   const C = tr.corners.length;
-  if (C === 0) return searchFastestSync(tr, car, vEntry);
+  if (C === 0) return searchFastestSync(tr, car, vEntry, opts);
   const total = SEARCH_PASSES * C;
-  const params = defaultParams(tr, 'late');
-  let time = 0, done = 0;
+  const st = searchInit(tr, car, vEntry, opts);
+  let done = 0;
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (let c = 0; c < C; c++) {
       if (signal && signal.aborted) return { aborted: true };
-      const g = bestForCornerGen(tr, car, vEntry, params, c);
-      let r, t0 = Date.now();
-      while (!(r = g.next()).done) {
+      const g = searchStepGen(st, tr, car, vEntry, c);
+      let t0 = Date.now();
+      while (!g.next().done) {
         if (Date.now() - t0 >= sliceMs) {
           await new Promise(res => setTimeout(res, 0));
           if (signal && signal.aborted) return { aborted: true };
           t0 = Date.now();
         }
       }
-      const b = r.value;
-      params[c] = b.param; time = b.time;
       done++;
       if (onProgress) onProgress(done, total);
       await new Promise(r => setTimeout(r, 0));
     }
   }
-  return { params, time };
+  return { params: st.params, time: st.time };
 }
 
 if (typeof module !== 'undefined') module.exports = { solveLineN, finishLineN, centerLine, lineOIO, runLineN, pinsFromParams, defaultParams, lineLate, lineInside, lineCustom, cornerStats, searchFastest, searchFastestSync };

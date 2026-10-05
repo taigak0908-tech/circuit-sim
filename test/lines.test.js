@@ -251,3 +251,21 @@ test('時間分割の途中（コーナー処理の最中に制御を返した�
   assert.equal(reads, 2, 'aborted を読んだ回数');
   assert.equal(progress, 0);
 });
+
+test('局所窓の探索（既定）のタイムは、区間全体で評価する旧来の探索（windowed:false）の +1% 以内（S字と、窓が区間より短い8コーナーの峠）', () => {
+  const car = deriveCar(GRB);
+  /* 峠: 左右交互の8コーナー（R 15〜40 m）を 60 m の直線でつなぐ。窓（前後のコーナー＋50 m）が区間全体より短くなる長さ */
+  const pass = [['s', 60]];
+  [[25, 'L', 120], [15, 'R', 160], [40, 'L', 70], [20, 'R', 140], [30, 'L', 100], [15, 'L', 150], [35, 'R', 80], [20, 'L', 130]]
+    .forEach(([r, d, ang]) => pass.push([d, r, ang], ['s', 60]));
+  const courses = { S字: sTrack({ W: 6, mode: 'full' }), 峠: buildTrackFromPath(toLatLngs(course(pass)), { W: 6, mode: 'full' }) };
+  assert.ok(!courses.峠.error && courses.峠.corners.length >= 6, '峠のコーナー数 ' + courses.峠.corners.length);
+  for (const name in courses) {
+    const tr = courses[name];
+    const win = searchFastestSync(tr, car, V_ENTRY), full = searchFastestSync(tr, car, V_ENTRY, { windowed: false });
+    assert.ok(win.time <= full.time * 1.01, name + ': 局所窓 ' + win.time + ' / 全体 ' + full.time);
+    /* time は区間全体のタイム（params から解き直した値と一致）で、出発点の late より遅くならない */
+    assert.ok(Math.abs(runLineN(tr, car, V_ENTRY, lineCustom(tr, win.params)).sim.time - win.time) < 1e-9, name + ': time の再計算');
+    assert.ok(win.time <= runLineN(tr, car, V_ENTRY, lineLate(tr)).sim.time + 1e-9, name + ': late 以下');
+  }
+});
