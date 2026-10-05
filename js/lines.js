@@ -146,16 +146,26 @@ const SEARCH_PASSES = 2;
    まず「現在の params[c]」をそのまま評価して基準にし、格子の候補は基準より厳密に速い（1e-9 超）ときだけ採用する。
    理由: 初期値（late の apex=0.65 など）は格子に含まれないので、基準に入れないと
    「探索した結果が初期値より遅くなる」ことがある。これで各コーナー処理後のタイムは増えない。
-   同タイムなら先に見つけた方（現在値 → 格子順）を残す */
-function bestForCorner(tr, car, vEntry, params, c) {
+   同タイムなら先に見つけた方（現在値 → 格子順）を残す。
+   候補を1つ評価するたびに yield するジェネレータ（戻り値が結果）。非同期版はこの yield のところで時間を見て画面に制御を返す
+   （区間が長いと 1 コーナーぶんで 0.5〜1 秒かかり、まとめて走らせると画面が固まるため） */
+function* bestForCornerGen(tr, car, vEntry, params, c) {
   let best = { param: params[c], time: runLineN(tr, car, vEntry, lineCustom(tr, params)).sim.time };
+  yield;
   for (const apex of APEX_GRID) for (const inside of INSIDE_GRID) for (const hold of HOLD_GRID) {
     const trial = params.slice();
     trial[c] = { apex, inside, hold };
     const time = runLineN(tr, car, vEntry, lineCustom(tr, trial)).sim.time;
     if (time < best.time - 1e-9) best = { param: trial[c], time };
+    yield;
   }
   return best;
+}
+function bestForCorner(tr, car, vEntry, params, c) {
+  const g = bestForCornerGen(tr, car, vEntry, params, c);
+  let r;
+  while (!(r = g.next()).done);
+  return r.value;
 }
 
 /* 同期版。defaultParams(late) から始め、コーナー順に他を固定して格子を総当たりし、これを2周する。{params, time} */
@@ -173,8 +183,11 @@ function searchFastestSync(tr, car, vEntry) {
   return { params, time };
 }
 
-/* 非同期版。同じ探索を、コーナー1つ分ごとに画面へ制御を返しながら進める。
-   opts = {onProgress(done,total), signal}。各コーナー処理の前に signal.aborted を見て、立っていれば {aborted:true} を返す */
+const SLICE_MS = 20;   // 非同期版が画面に制御を返す間隔（ms）。1 評価は最長でも十数 ms
+
+/* 非同期版。同じ探索を、SLICE_MS ごとに画面へ制御を返しながら進める（結果は同期版と同じ）。
+   opts = {onProgress(done,total), signal}。onProgress はコーナー1つ分ごと。
+   各コーナー処理の前と制御を返した直後に signal.aborted を見て、立っていれば {aborted:true} を返す */
 async function searchFastest(tr, car, vEntry, opts) {
   const { onProgress, signal } = opts || {};
   const C = tr.corners.length;
@@ -185,7 +198,16 @@ async function searchFastest(tr, car, vEntry, opts) {
   for (let pass = 0; pass < SEARCH_PASSES; pass++) {
     for (let c = 0; c < C; c++) {
       if (signal && signal.aborted) return { aborted: true };
-      const b = bestForCorner(tr, car, vEntry, params, c);
+      const g = bestForCornerGen(tr, car, vEntry, params, c);
+      let r, t0 = Date.now();
+      while (!(r = g.next()).done) {
+        if (Date.now() - t0 >= SLICE_MS) {
+          await new Promise(res => setTimeout(res, 0));
+          if (signal && signal.aborted) return { aborted: true };
+          t0 = Date.now();
+        }
+      }
+      const b = r.value;
       params[c] = b.param; time = b.time;
       done++;
       if (onProgress) onProgress(done, total);
