@@ -37,6 +37,7 @@
     params: [],          // 自分のライン（コーナーごと {apex,inside,hold}）。tr ができるたび既定値に戻す
     paramsEdited: false, // スライダーを触ったか。触っていなければ最速の探索が終わったとき自分のラインも最速に揃える
     fast: null,          // 最速探索 {tr, car, vIn, ac(AbortController), timer, t0, params, res}。res は完了後の {line, sim, stats}
+    fastError: false,    // 最速探索の失敗メッセージを出している間 true（次に成功したら消す）
     computeError: false, // compute の失敗メッセージを出している間 true（成功したら消す）
     sel: 'fast',         // 選択中の系列（地図で太く・表で強調）
     selCorner: -1,       // 表で選んだコーナーの添字
@@ -123,10 +124,11 @@
     if (S.fast) cancelFast(S.fast);
     const f = S.fast = { tr, car: S.car, vIn: S.vIn, ac: new AbortController(), timer: 0, t0: performance.now(), t1: 0, params: null, res: null };
     showProgress(0, 2 * tr.corners.length);
+    syncMyUI();   // 最速の params が決まるまで「最速に戻す」を無効にする
     f.timer = setTimeout(() => {
       searchFastest(f.tr, f.car, f.vIn / 3.6, { signal: f.ac.signal, onProgress: (d, t) => { if (S.fast === f) showProgress(d, t); } })
         .then(r => { if (!r.aborted && fastCurrent() === f) finishFast(f, r); })
-        .catch(e => { if (S.fast === f) { showProgress(null); showMsg('最速の探索に失敗しました（' + e.message + '）'); } });
+        .catch(e => { if (S.fast === f) { showProgress(null); S.fastError = true; showMsg('最速の探索に失敗しました（' + e.message + '）'); } });
     }, FAST_DELAY);
   }
   function finishFast(f, r) {
@@ -135,6 +137,7 @@
     f.params = r.params; f.t1 = performance.now();
     f.res = { line: run.line, sim: run.sim, stats: cornerStats(tr, run.sim) };
     showProgress(null);
+    if (S.fastError) { S.fastError = false; showMsg(null); }   // 失敗メッセージは成功したら消す
     if (S.results) S.results.fast = f.res;
     if (!S.paramsEdited) {   // 自分のラインを触っていなければ最速に揃える
       S.params = r.params.map(p => Object.assign({}, p));
