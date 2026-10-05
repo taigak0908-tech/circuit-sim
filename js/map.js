@@ -5,9 +5,11 @@ const _xyToLatLng = typeof module !== 'undefined' ? require('./track').xyToLatLn
 
 const VIEW_KEY = 'section-sim-view-v1';
 const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const FETCH_TIMEOUT = 15000;   // ms。経路・OSM タグの取得はこれ以上待たない
 const TILES = {
   osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors', maxZoom: 19 },
-  aerial: { url: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', attribution: '国土地理院', maxZoom: 18 }
+  aerial: { url: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', attribution: '国土地理院', maxNativeZoom: 18, maxZoom: 19 }   // 18 を超えたら 18 のタイルを拡大して使う
 };
 
 /* 2点間の球面距離(m)（ハーバーサイン） */
@@ -19,21 +21,59 @@ function _dist(a, b) {
 }
 function _pathLength(ll) { let d = 0; for (let i = 1; i < ll.length; i++) d += _dist(ll[i - 1], ll[i]); return d; }
 
+/* タイムアウトつきの fetch。ms 以内に応答が返らなければ中断して例外にする。
+   戻り値は {ok, json}（本文が JSON でなければ json は null）。通信そのものの失敗・タイムアウトは例外 */
+async function _fetchJson(url, opt, ms) {
+  const ac = new AbortController(), timer = setTimeout(() => ac.abort(), ms || FETCH_TIMEOUT);
+  try {
+    const res = await fetch(url, Object.assign({}, opt, { signal: ac.signal }));
+    let json = null;
+    try { json = await res.json(); } catch (e) { json = null; }
+    return { ok: res.ok, json };
+  } finally { clearTimeout(timer); }
+}
+
 /* 経路取得（OSRM）。points = [{lat,lng}]（始点・経由点…・終点の順）。
-   通信失敗/HTTPエラーは Error('route')、道が無い（code !== 'Ok'）は Error('noroute') */
+   通信失敗・タイムアウト・HTTPエラー（道が無い以外）は Error('route')、
+   道が無い（code が NoSegment/NoRoute/InvalidQuery 系、または 200 で code !== 'Ok'）は Error('noroute') */
 async function fetchRoute(points) {
   const coords = points.map(p => p.lng + ',' + p.lat).join(';');
-  let json;
+  let r;
   try {
-    const res = await fetch(OSRM_URL + coords + '?overview=full&geometries=geojson');
-    if (!res.ok) throw new Error('http ' + res.status);
-    json = await res.json();
+    r = await _fetchJson(OSRM_URL + coords + '?overview=full&geometries=geojson');
   } catch (e) {
     throw new Error('route');
   }
+  const json = r.json;
+  if (!r.ok) throw new Error(json && /^(NoSegment|NoRoute|InvalidQuery)/.test(json.code) ? 'noroute' : 'route');
   if (!json || json.code !== 'Ok' || !json.routes || !json.routes[0]) throw new Error('noroute');
-  const r = json.routes[0];
-  return { latlngs: r.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })), distance: r.distance };
+  const route = json.routes[0];
+  return { latlngs: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })), distance: route.distance };
+}
+
+/* OSM の way の tags から道幅(m)を決める。width があればその数値（"6 m" も可）、無く lanes があれば lanes*3、無ければ null。
+   elements は Overpass の応答の elements 配列（複数の way があれば width を優先し、先に見つかった値を使う） */
+function osmWidthFromElements(elements) {
+  let lanes = null;
+  for (const el of elements || []) {
+    const t = el && el.tags; if (!t) continue;
+    const w = parseFloat(t.width);
+    if (isFinite(w) && w > 0) return w;
+    const n = parseInt(t.lanes, 10);
+    if (lanes == null && isFinite(n) && n > 0) lanes = n * 3;
+  }
+  return lanes;
+}
+
+/* 地点の近く（8m 以内）の道路の OSM タグから道幅(m)の初期値を取る（Overpass API）。取れない・失敗・タイムアウトは null */
+async function fetchOsmWidth(lat, lng) {
+  const q = '[out:json][timeout:10];way(around:8,' + lat + ',' + lng + ')[highway];out tags;';
+  try {
+    const r = await _fetchJson(OVERPASS_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q)
+    });
+    return r.ok && r.json ? osmWidthFromElements(r.json.elements) : null;
+  } catch (e) { return null; }
 }
 
 /* 手動の点列を Catmull-Rom スプラインで滑らかにつなぐ（各区間 10 分割）。2点なら直線 */
@@ -77,12 +117,13 @@ function createMap(el) {
   const markerLayer = L.layerGroup().addTo(map);
   const cornerLayer = L.layerGroup().addTo(map);
   const linesLayer = L.layerGroup().addTo(map);
+  const measureLayer = L.layerGroup().addTo(map);
   let carMarker = null, routeLine = null;
 
   function setBase(name) {
     const t = TILES[name] || TILES.osm;
     if (base) map.removeLayer(base);
-    base = L.tileLayer(t.url, { attribution: t.attribution, maxZoom: t.maxZoom }).addTo(map);
+    base = L.tileLayer(t.url, { attribution: t.attribution, maxZoom: t.maxZoom, maxNativeZoom: t.maxNativeZoom || t.maxZoom }).addTo(map);
     base.bringToBack();
   }
   function setRoute(latlngs) {
@@ -122,6 +163,14 @@ function createMap(el) {
     if (carMarker) { map.removeLayer(carMarker); carMarker = null; }
     if (p) carMarker = L.circleMarker([p.lat, p.lng], { radius: 7, color: '#ffffff', weight: 2, fillColor: '#d03b3b', fillOpacity: 1, interactive: false }).addTo(map);
   }
+  /* 幅の計測用の一時描画。p1 だけなら仮の点、p1 と p2 なら点と線。p1 が null なら消す */
+  function measureLine(p1, p2) {
+    measureLayer.clearLayers();
+    if (!p1) return;
+    const dot = p => L.circleMarker([p.lat, p.lng], { radius: 5, color: '#ffffff', weight: 2, fillColor: '#eda100', fillOpacity: 1, interactive: false }).addTo(measureLayer);
+    dot(p1);
+    if (p2) { dot(p2); L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], { color: '#eda100', weight: 3, interactive: false }).addTo(measureLayer); }
+  }
   function onMapClick(cb) { map.on('click', e => cb({ lat: e.latlng.lat, lng: e.latlng.lng })); }
   function fitRoute() { if (routeLine) map.fitBounds(routeLine.getBounds(), { padding: [30, 30] }); }
   function saveView() {
@@ -137,7 +186,7 @@ function createMap(el) {
   restoreView();
   setBase('osm');
   map.on('moveend', saveView);
-  return { map, setBase, setRoute, setMarkers, drawCorners, drawLines, clearLines, setCar, onMapClick, fitRoute, saveView, restoreView };
+  return { map, setBase, setRoute, setMarkers, drawCorners, drawLines, clearLines, setCar, measureLine, onMapClick, fitRoute, saveView, restoreView };
 }
 
-if (typeof module !== 'undefined') module.exports = { fetchRoute, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo };
+if (typeof module !== 'undefined') module.exports = { fetchRoute, fetchOsmWidth, osmWidthFromElements, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo };
