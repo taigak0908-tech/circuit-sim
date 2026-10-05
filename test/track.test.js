@@ -254,3 +254,19 @@ test('detectCorners: NaN を含む曲率でも止まらずに返る（NaN は「
   assert.equal(cs.length, 1);
   assert.equal(cs[0].dir, 'L');
 });
+
+test('同じ latlngs なら W=6/full と W=3/lane でコーナー（i0/i1 など）が同じ（幅・範囲の変更で自分のラインを保てる）', () => {
+  const ll = toLatLngs(course(SHAPE));
+  const a = buildTrackFromPath(ll, { W: 6, mode: 'full' }), b = buildTrackFromPath(ll, { W: 3, mode: 'lane' });
+  assert.ok(!a.error && !b.error && a.corners.length >= 2);
+  assert.deepEqual(b.corners, a.corners);
+});
+
+test('detectCorners: 同じ向きの隙間ちょうど 14 m はまとまり、15 m はまとまらない（隙間 = 間にある直線の点の数×ds）', () => {
+  const k = 1 / 30, arc = n => new Array(n).fill(k), gap = n => new Array(n).fill(0);
+  const merged = detectCorners([0, ...arc(20), ...gap(14), ...arc(20), 0], 1);
+  assert.equal(merged.length, 1, '14 m');
+  assert.deepEqual([merged[0].i0, merged[0].i1], [1, 54]);
+  const apart = detectCorners([0, ...arc(20), ...gap(15), ...arc(20), 0], 1);
+  assert.equal(apart.length, 2, '15 m');
+});

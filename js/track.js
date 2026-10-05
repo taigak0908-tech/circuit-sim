@@ -124,7 +124,8 @@ function detectCorners(kap, ds, opt) {
   const merged = [];
   for (const c of cand) {
     const prev = merged[merged.length - 1];
-    if (prev && prev.dir === c.dir && (c.i0 - prev.i1) * ds < o.mergeGap) prev.i1 = c.i1;
+    /* 隙間 = 2つの区間の間にある（曲がっていない）点の数 × ds。i0 - i1 だと 1 点ぶん長く数えてしまう */
+    if (prev && prev.dir === c.dir && (c.i0 - prev.i1 - 1) * ds < o.mergeGap) prev.i1 = c.i1;
     else merged.push({ i0: c.i0, i1: c.i1, dir: c.dir });
   }
   const out = [];
