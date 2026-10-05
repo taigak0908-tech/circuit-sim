@@ -139,14 +139,18 @@ const INSIDE_GRID = [1.0, 0.7, 0.4];
 const HOLD_GRID = [0, 10, 20];
 const SEARCH_PASSES = 2;
 
-/* コーナー c だけを格子（7×3×3=63通り）で試し、区間タイムが最短の {param, time} を返す。同タイムなら先に見つけた方 */
+/* コーナー c だけを格子（7×3×3=63通り）で試し、区間タイムが最短の {param, time} を返す。
+   まず「現在の params[c]」をそのまま評価して基準にし、格子の候補は基準より厳密に速い（1e-9 超）ときだけ採用する。
+   理由: 初期値（late の apex=0.65 など）は格子に含まれないので、基準に入れないと
+   「探索した結果が初期値より遅くなる」ことがある。これで各コーナー処理後のタイムは増えない。
+   同タイムなら先に見つけた方（現在値 → 格子順）を残す */
 function bestForCorner(tr, car, vEntry, params, c) {
-  let best = null;
+  let best = { param: params[c], time: runLineN(tr, car, vEntry, lineCustom(tr, params)).sim.time };
   for (const apex of APEX_GRID) for (const inside of INSIDE_GRID) for (const hold of HOLD_GRID) {
     const trial = params.slice();
     trial[c] = { apex, inside, hold };
     const time = runLineN(tr, car, vEntry, lineCustom(tr, trial)).sim.time;
-    if (!best || time < best.time) best = { param: trial[c], time };
+    if (time < best.time - 1e-9) best = { param: trial[c], time };
   }
   return best;
 }
