@@ -189,7 +189,7 @@ const SectionRender = (function () {
   }
   /* G-G 線図。sim = 選択中ラインの結果。戻り値 {html, cx, cy, k}（点は ggDot で置く） */
   function ggPlot(w, h, car, sim, color) {
-    const gm = Math.ceil((car.mu + 0.3) * 2) / 2, rad = Math.min(w, h) / 2 - 22, cx = w / 2, cy = h / 2, k = rad / gm, G = P.G;
+    const gm = Math.ceil((car.mu + 0.3) * 2) / 2, rad = Math.max(0, Math.min(w, h) / 2 - 22), cx = w / 2, cy = h / 2, k = rad / gm, G = P.G;
     let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="選択中のラインの前後Gと横Gの軌跡">';
     for (let g = 0.5; g <= gm + 1e-9; g += 0.5) s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + g * k + '" fill="none" stroke="var(--grid)"/><text x="' + (cx + 3) + '" y="' + (cy - g * k + 11) + '">' + g.toFixed(1) + ' G</text>';
     s += '<line x1="' + (cx - rad) + '" x2="' + (cx + rad) + '" y1="' + cy + '" y2="' + cy + '" stroke="var(--axis)"/><line x1="' + cx + '" x2="' + cx + '" y1="' + (cy - rad) + '" y2="' + (cy + rad) + '" stroke="var(--axis)"/>';

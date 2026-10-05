@@ -245,3 +245,12 @@ test('smoothPos は端の点を動かさず、点が1〜2個でも落ちない',
   assert.deepEqual(Array.from(smoothPos([5], 6)), [5]);
   assert.deepEqual(Array.from(smoothPos([5, 7], 6)), [5, 7]);
 });
+
+test('detectCorners: NaN を含む曲率でも止まらずに返る（NaN は「曲がっていない」扱い）', () => {
+  assert.deepEqual(detectCorners([NaN, 0.1, NaN], 1), []);
+  /* NaN の前後に本物のコーナーがあれば、それは検出される（NaN で区間が切れる） */
+  const kap = [NaN, ...new Array(30).fill(1 / 30), NaN, 0, 0];
+  const cs = detectCorners(kap, 1);
+  assert.equal(cs.length, 1);
+  assert.equal(cs[0].dir, 'L');
+});

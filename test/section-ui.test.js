@@ -95,3 +95,13 @@ test('荷重カード・G-G図: 全位置で NaN を出さず、4輪の荷重・
   const d = SR.ggDot(gg, R.fast.sim, 60);
   assert.ok(Number.isFinite(d.x) && Number.isFinite(d.y));
 });
+
+test('G-G 図: 枠が極端に小さくても円の半径が負にならない（<circle> attribute r の負値エラー対策）', () => {
+  const tr = buildTrackFromPath(toLatLngs(course(SHAPE)), { W: 6, mode: 'full' });
+  const R = results(tr), car = deriveCar(GRB);
+  for (const [w, h] of [[30, 260], [262, 20], [0, 0], [300, 260]]) {
+    const html = SR.ggPlot(w, h, car, R.center.sim, 'red').html;
+    const rs = [...html.matchAll(/ r="([^"]+)"/g)].map(m => +m[1]);
+    assert.ok(rs.length > 0 && rs.every(r => r >= 0), w + 'x' + h + ': ' + rs.join(','));
+  }
+});

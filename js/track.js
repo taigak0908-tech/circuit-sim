@@ -113,7 +113,7 @@ function detectCorners(kap, ds, opt) {
   const n = kap.length, cand = [];
   let i = 0;
   while (i < n) {
-    if (Math.abs(kap[i]) <= o.kMin) { i++; continue; }
+    if (!(Math.abs(kap[i]) > o.kMin)) { i++; continue; }   /* NaN も「曲がっていない」扱い（<= で判定すると NaN で無限ループする） */
     const i0 = i;
     /* 符号が反転したらそこで区間を切る（L→R が隙間 0 で続いても別のコーナー） */
     const left = kap[i] > 0;

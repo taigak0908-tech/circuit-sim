@@ -608,7 +608,7 @@
       S.params = d.params.map(p => Object.assign({}, p)); S.paramsEdited = true; syncMyUI(); schedule();
     }
     const now = S.tr.total;
-    if (d.total > 0 && Math.abs(now - d.total) / d.total > 0.05) showMsg('道路データが変わっています（保存時 ' + Math.round(d.total) + ' m → いま ' + Math.round(now) + ' m）', { info: true });
+    if (d.total > 0 && Math.abs(now - d.total) / d.total >= 0.05) showMsg('道路データが変わっています（保存時 ' + Math.round(d.total) + ' m → いま ' + Math.round(now) + ' m）', { info: true });
   }
   $('btn-save').addEventListener('click', saveCurrent);
   $('sec-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveCurrent(); } });
