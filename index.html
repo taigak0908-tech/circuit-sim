@@ -1,0 +1,874 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>コーナーライン比較シム</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<style>
+/* レイアウト: 左に操作パネル、右は「結論 → コース図と車両状態 → 比較表 → グラフ」の順に読む計測シート */
+:root{
+  --plane:#f4f4f1; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#77756f;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.13);
+  --asphalt:#d6d5ce; --curb:#d03b3b; --curbw:#ffffff;
+  --accent:#6a32c9; --accent-ink:#ffffff; --accent-wash:rgba(106,50,201,.10); --crit:#c93535;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  --font-body:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  --font-data:"Saira Semi Condensed","Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#9b9992;
+  --grid:#2c2c2a; --axis:#4a4a46; --border:rgba(255,255,255,.14);
+  --asphalt:#34342f; --curb:#e05252; --curbw:#eeede7;
+  --accent:#b594ff; --accent-ink:#160f26; --accent-wash:rgba(181,148,255,.16); --crit:#e66767;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#9b9992;
+  --grid:#2c2c2a; --axis:#4a4a46; --border:rgba(255,255,255,.14);
+  --asphalt:#34342f; --curb:#e05252; --curbw:#eeede7;
+  --accent:#b594ff; --accent-ink:#160f26; --accent-wash:rgba(181,148,255,.16); --crit:#e66767;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.65}
+.wrap{max-width:1360px;margin-inline:auto;padding-inline:clamp(16px,3vw,32px);padding-block:22px 56px;display:grid;gap:22px}
+h1,h2,h3,p{margin:0}
+h1{font-size:clamp(22px,3vw,30px);font-weight:900;letter-spacing:.01em;line-height:1.25;text-wrap:balance}
+.lede{color:var(--ink2);max-width:62ch}
+h2{font-size:15px;font-weight:700;line-height:1.4;text-wrap:balance}
+.sub{color:var(--muted);font-size:12px}
+.num{font-family:var(--font-data);font-variant-numeric:tabular-nums}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:26px;align-items:start}
+.main{display:grid;gap:22px;min-width:0}
+
+/* 操作パネル */
+.controls{display:grid;gap:4px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100vh - 24px);overflow:auto;padding-right:6px}
+.controls details{border-top:1px solid var(--border);padding-block:10px}
+.controls details:last-of-type{border-bottom:1px solid var(--border)}
+.controls summary{cursor:pointer;font-weight:700;font-size:14px;list-style-position:inside;padding-block:2px}
+.controls summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, .rowsel input:focus-visible + .key{outline:2px solid var(--accent);outline-offset:2px}
+.grp{display:grid;gap:12px;padding-top:10px}
+.fld{display:grid;gap:2px}
+.fld-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.fld label{font-size:12.5px;color:var(--ink2)}
+.fld output{font-family:var(--font-data);font-variant-numeric:tabular-nums;font-weight:600;font-size:14px;white-space:nowrap}
+.fld input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:22px}
+.fld select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;width:100%}
+.hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+.adv{border:0 !important;padding:0 !important}
+.adv summary{font-weight:500;font-size:12.5px;color:var(--ink2)}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.seg button, .btn{font:inherit;font-size:12.5px;border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:6px;padding:6px 4px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn{padding:8px 12px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:hover, .seg button:hover{filter:brightness(1.06)}
+
+/* 結論 */
+.verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 32px;align-items:center;border-top:3px solid var(--ink);padding-top:14px}
+.eyebrow{font-size:12px;color:var(--muted);letter-spacing:.08em}
+.v-name{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
+.v-time{font-family:var(--font-data);font-weight:700;font-size:clamp(44px,6vw,60px);line-height:1}
+.v-time small{font-family:var(--font-body);font-size:15px;font-weight:500;color:var(--ink2);margin-left:4px}
+.v-text{display:grid;gap:6px;color:var(--ink2);max-width:66ch}
+.v-text strong{color:var(--ink)}
+
+.key{display:inline-block;width:14px;height:4px;border-radius:2px;flex:none}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;display:grid;gap:10px;min-width:0}
+.card-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 12px}
+.two{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:16px;align-items:start}
+.two.even{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px}
+.legend button{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;color:var(--ink2);background:transparent;border:1px solid var(--border);border-radius:999px;padding:3px 10px;cursor:pointer}
+.legend button[aria-pressed=true]{color:var(--ink);font-weight:700;border-color:var(--ink);background:var(--plane)}
+
+#map{height:380px;position:relative;touch-action:pan-y}
+#map svg, .plot svg{display:block;width:100%;height:100%}
+.plot{position:relative;touch-action:pan-y}
+.tip{position:absolute;top:8px;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.14);white-space:nowrap;z-index:2}
+.tip b{font-weight:700}
+.tip .row{display:flex;align-items:center;gap:6px}
+.tip .row span.v{margin-left:auto;padding-left:12px;font-family:var(--font-data);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+svg text{font-family:var(--font-data);font-size:11px;fill:var(--muted)}
+svg text.jp{font-family:var(--font-body)}
+svg text.ink{fill:var(--ink2)}
+svg text.strong{fill:var(--ink);font-weight:700}
+.scrubrow{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;font-size:12px;color:var(--ink2)}
+.scrubrow input{width:100%;accent-color:var(--accent);margin:0}
+
+/* 車両状態 */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stat .l{font-size:11.5px;color:var(--muted)}
+.stat .v{font-family:var(--font-data);font-weight:700;font-size:24px;line-height:1.1}
+.stat .v small{font-size:12px;font-weight:500;color:var(--ink2);margin-left:2px}
+.meter{display:grid;grid-template-columns:5.5em minmax(0,1fr) 5.2em;gap:8px;align-items:center;font-size:12px;color:var(--ink2)}
+.meter .track{height:8px;border-radius:4px;background:color-mix(in srgb,var(--s1) 18%,var(--surface));overflow:hidden}
+.meter .fill{height:100%;background:var(--s1);border-radius:4px}
+.meter .fill.lim{background:var(--crit)}
+.meter .val{font-family:var(--font-data);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);text-align:right}
+
+/* 比較表 */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:860px;font-size:13px}
+th{font-weight:500;font-size:11.5px;color:var(--muted);text-align:right;padding:4px 10px;border-bottom:1px solid var(--axis);white-space:nowrap;vertical-align:bottom}
+th:first-child, td:first-child{text-align:left;padding-left:0}
+td{padding:8px 10px;border-bottom:1px solid var(--grid);text-align:right;font-family:var(--font-data);font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{font-family:var(--font-body)}
+tr.sel td{background:var(--plane)}
+tr.sel td:first-child{font-weight:700}
+.rowsel{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.rowsel input{position:absolute;opacity:0;width:1px;height:1px}
+.tag{font-size:10.5px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 5px;margin-left:6px;font-weight:500}
+.pill{display:inline-block;font-family:var(--font-body);font-size:10.5px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-radius:4px;padding:0 6px;margin-right:6px}
+td.t{font-weight:700;font-size:15px}
+
+.notes{color:var(--ink2);font-size:12.5px;display:grid;gap:6px;max-width:80ch}
+.notes ul{margin:0;padding-left:1.2em;display:grid;gap:3px}
+
+@media (max-width:980px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .controls{position:static;max-height:none;overflow:visible;padding-right:0}
+  .two, .two.even{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:560px){
+  .verdict{grid-template-columns:minmax(0,1fr)}
+  #map{height:300px}
+  .card{padding:12px}
+}
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:6px">
+    <h1>コーナーライン比較シム</h1>
+    <p class="lede">コーナー1つを5通りのラインで走らせ、荷重移動を含めてボトム速度・立ち上がり速度・区間タイムの差を計算します。左の数値を動かすと、その場で全部計算し直します。</p>
+  </header>
+
+  <div class="layout">
+    <form class="controls" id="controls" autocomplete="off">
+      <details id="d-car">
+        <summary>車両</summary>
+        <div class="grp">
+          <div class="fld"><label for="f-preset">車種（概算の例値）</label>
+            <select id="f-preset"></select></div>
+          <div class="fld"><label for="f-drive">駆動方式</label>
+            <select id="f-drive"><option value="AWD">4WD</option><option value="FR">FR（後輪駆動）</option><option value="FF">FF（前輪駆動）</option></select></div>
+          <div id="g-car" class="grp" style="padding-top:0"></div>
+          <details class="adv"><summary>細かい諸元</summary><div id="g-carAdv" class="grp"></div></details>
+        </div>
+      </details>
+      <details id="d-corner">
+        <summary>コーナー（左コーナー）</summary>
+        <div class="grp">
+          <div class="seg" id="cornerseg" role="group" aria-label="コーナーの種類"></div>
+          <div id="g-corner" class="grp" style="padding-top:0"></div>
+        </div>
+      </details>
+      <details id="d-my">
+        <summary>マイライン</summary>
+        <div class="grp">
+          <button type="button" class="btn" id="autobtn">この条件で最速のラインを自動探索</button>
+          <div id="g-my" class="grp" style="padding-top:0"></div>
+        </div>
+      </details>
+    </form>
+
+    <div class="main" id="main">
+      <section class="verdict" id="verdict" aria-live="polite"></section>
+
+      <div class="two">
+        <section class="card">
+          <div class="card-head"><h2>走行ライン</h2><span class="sub">ラインをなぞるか、名前を選ぶと車両状態が切り替わります</span></div>
+          <div class="legend" id="legend" role="group" aria-label="表示するライン"></div>
+          <div id="map"></div>
+        </section>
+        <section class="card" id="statecard">
+          <div class="card-head"><h2>車両状態（荷重と姿勢）</h2><span class="sub" id="statepos"></span></div>
+          <div id="state"></div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-head"><h2>ライン別の結果</h2><span class="sub">差は基準（アウト・イン・アウト）との比較。＋は遅い、−は速い</span></div>
+        <div class="tablewrap" id="table"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>速度（km/h）</h2><span class="sub">横軸はコーナー入口を 0 m としたコース上の位置</span></div>
+        <div class="plot" id="speed" style="height:260px"></div>
+        <div class="card-head" style="margin-top:6px"><h2>基準ラインに対するタイム差の積み上がり（秒）</h2><span class="sub">線が下がる区間で基準より速く走れています</span></div>
+        <div class="plot" id="delta" style="height:190px"></div>
+        <div class="scrubrow"><label for="scrub">位置を動かす</label><input type="range" id="scrub" min="0" max="100" step="1" value="0"></div>
+      </section>
+
+      <div class="two even">
+        <section class="card">
+          <div class="card-head"><h2>エイペックス位置を変えたときの区間タイム（秒）</h2><span class="sub">マイラインのほかの設定はそのまま。点を押すとその位置にします</span></div>
+          <div class="plot" id="sweep" style="height:230px"></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><h2>G-G 線図</h2><span class="sub" id="ggsub"></span></div>
+          <div class="plot" id="gg" style="height:230px"></div>
+        </section>
+      </div>
+
+      <section class="notes">
+        <h2>計算の前提</h2>
+        <ul>
+          <li>各地点でタイヤが出せる限界まで加速・減速・旋回を使い切る、理想的なドライバーを仮定した準定常モデルです。実走タイムの絶対値より、ライン同士の差を見る用途に向いています。</li>
+          <li>荷重は加減速で前後に、横Gで左右に移動します。タイヤは荷重が増えるほど摩擦係数が少し下がる設定なので、荷重移動が大きい車ほど合計グリップが減ります。</li>
+          <li>ロール角・ピッチ角は表示用です。キャンバー変化、ダンパーの過渡応答、タイヤ温度、路面の勾配やバンクは計算していません。</li>
+          <li>4WD とブレーキは前後に理想配分できるものとしています。車種の数値はカタログ値をもとにした概算で、重心高・空力・ロール率は推定値です。</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</div>
+<script>
+/* ===== 計算エンジン（DOM非依存） ===== */
+const G = 9.81, RHO = 1.2;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+/* コース: 直線 → 左コーナー(円弧) → 直線。n は外側を正とする横位置 */
+function buildTrack(c) {
+  const ang = c.angDeg * Math.PI / 180, arc = c.R * ang, total = c.Ls + arc + c.Le;
+  const N = clamp(Math.round(total / 1.25), 140, 420) + 1;
+  const ds = total / (N - 1);
+  const cx = new Float64Array(N), cy = new Float64Array(N), nx = new Float64Array(N), ny = new Float64Array(N), st = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const s = i * ds; let x, y, hd;
+    if (s < c.Ls) { x = s; y = 0; hd = 0; }
+    else if (s < c.Ls + arc) { const p = (s - c.Ls) / c.R; x = c.Ls + c.R * Math.sin(p); y = c.R * (1 - Math.cos(p)); hd = p; }
+    else { const r = s - c.Ls - arc; x = c.Ls + c.R * Math.sin(ang) + r * Math.cos(ang); y = c.R * (1 - Math.cos(ang)) + r * Math.sin(ang); hd = ang; }
+    cx[i] = x; cy[i] = y; nx[i] = Math.sin(hd); ny[i] = -Math.cos(hd); st[i] = s;
+  }
+  return { N, ds, cx, cy, nx, ny, st, total, ang, W: c.W, R: c.R,
+    iA: Math.round(c.Ls / ds), iB: Math.round((c.Ls + arc) / ds), b: Math.max(0.3, c.W / 2 - 1.0) };
+}
+
+/* 対称5重対角の連立方程式 */
+function solvePenta(d0, d1, d2, rhs) {
+  const n = d0.length;
+  const c = Float64Array.from(d0), d = Float64Array.from(d1), e = Float64Array.from(d2), x = Float64Array.from(rhs);
+  const b = new Float64Array(n), a = new Float64Array(n);
+  for (let i = 1; i < n; i++) b[i] = d1[i - 1];
+  for (let i = 2; i < n; i++) a[i] = d2[i - 2];
+  for (let i = 0; i < n - 1; i++) {
+    let m = b[i + 1] / c[i];
+    c[i + 1] -= m * d[i]; x[i + 1] -= m * x[i];
+    if (i + 2 < n) {
+      d[i + 1] -= m * e[i];
+      m = a[i + 2] / c[i];
+      b[i + 2] -= m * d[i]; c[i + 2] -= m * e[i]; x[i + 2] -= m * x[i];
+    }
+  }
+  x[n - 1] /= c[n - 1];
+  x[n - 2] = (x[n - 2] - d[n - 2] * x[n - 1]) / c[n - 2];
+  for (let i = n - 3; i >= 0; i--) x[i] = (x[i] - d[i] * x[i + 1] - e[i] * x[i + 2]) / c[i];
+  return x;
+}
+
+/* 走行ライン: 指定点を通り、コース幅の中で曲率が最小になる線 */
+function makeLine(tr, spec) {
+  if (spec.fixed === undefined && spec.delay > 0) {
+    const base = solveLine(tr, spec, 0); let i0 = 0;
+    while (i0 < tr.iB && Math.abs(base.n[i0] - spec.entry * tr.b) < 0.15) i0++;
+    return solveLine(tr, spec, i0 + Math.round(spec.delay / tr.ds));
+  }
+  return solveLine(tr, spec, 0);
+}
+function solveLine(tr, spec, holdTo) {
+  const N = tr.N, b = tr.b;
+  let n = new Float64Array(N);
+  if (spec.fixed !== undefined) { n.fill(spec.fixed * b); return finishLine(tr, n, null); }
+  const h0 = new Float64Array(N), h1 = new Float64Array(N), h2 = new Float64Array(N), g = new Float64Array(N);
+  for (let i = 1; i < N - 1; i++) {
+    const ccx = tr.cx[i - 1] - 2 * tr.cx[i] + tr.cx[i + 1], ccy = tr.cy[i - 1] - 2 * tr.cy[i] + tr.cy[i + 1];
+    const ux = tr.nx[i - 1], uy = tr.ny[i - 1], vx = -2 * tr.nx[i], vy = -2 * tr.ny[i], wx = tr.nx[i + 1], wy = tr.ny[i + 1];
+    h0[i - 1] += ux * ux + uy * uy; h0[i] += vx * vx + vy * vy; h0[i + 1] += wx * wx + wy * wy;
+    h1[i - 1] += ux * vx + uy * vy; h1[i] += vx * wx + vy * wy; h2[i - 1] += ux * wx + uy * wy;
+    g[i - 1] += ux * ccx + uy * ccy; g[i] += vx * ccx + vy * ccy; g[i + 1] += wx * ccx + wy * ccy;
+  }
+  const pin = new Float64Array(N).fill(NaN);
+  for (let k = 0; k < 3; k++) { pin[k] = spec.entry * b; pin[N - 1 - k] = spec.exit * b; }
+  if (holdTo > 0) for (let k = 3; k <= Math.min(holdTo, N - 8); k++) pin[k] = spec.entry * b;
+  let iApex = null;
+  if (spec.apex != null) {
+    iApex = clamp(Math.round(tr.iA + spec.apex * (tr.iB - tr.iA)), Math.max(4, holdTo + 3), N - 5);
+    pin[iApex] = -(spec.apexIn == null ? 1 : spec.apexIn) * b;
+  }
+  const act = new Int8Array(N), Wp = 1e5;
+  for (let it = 0; it < 40; it++) {
+    const d0 = Float64Array.from(h0), rhs = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      rhs[i] = -g[i];
+      if (!isNaN(pin[i])) { d0[i] += Wp; rhs[i] += Wp * pin[i]; }
+      else if (act[i]) { d0[i] += Wp; rhs[i] += Wp * act[i] * b; }
+    }
+    n = solvePenta(d0, h1, h2, rhs);
+    let changed = false;
+    for (let i = 0; i < N; i++) {
+      if (!isNaN(pin[i])) continue;
+      if (!act[i]) {
+        if (n[i] > b + 1e-3) { act[i] = 1; changed = true; }
+        else if (n[i] < -b - 1e-3) { act[i] = -1; changed = true; }
+      } else if (it < 28) {
+        let r = h0[i] * n[i] + g[i];
+        if (i > 0) r += h1[i - 1] * n[i - 1];
+        if (i > 1) r += h2[i - 2] * n[i - 2];
+        if (i < N - 1) r += h1[i] * n[i + 1];
+        if (i < N - 2) r += h2[i] * n[i + 2];
+        if (act[i] * r > 1e-9) { act[i] = 0; changed = true; }
+      }
+    }
+    if (!changed) break;
+  }
+  for (let i = 0; i < N; i++) n[i] = clamp(n[i], -b, b);
+  return finishLine(tr, n, iApex);
+}
+
+function finishLine(tr, n, iApex) {
+  const N = tr.N, px = new Float64Array(N), py = new Float64Array(N), seg = new Float64Array(N), dist = new Float64Array(N);
+  for (let i = 0; i < N; i++) { px[i] = tr.cx[i] + n[i] * tr.nx[i]; py[i] = tr.cy[i] + n[i] * tr.ny[i]; }
+  for (let i = 0; i < N - 1; i++) { seg[i] = Math.hypot(px[i + 1] - px[i], py[i + 1] - py[i]); dist[i + 1] = dist[i] + seg[i]; }
+  seg[N - 1] = seg[N - 2];
+  let k = new Float64Array(N);
+  for (let i = 1; i < N - 1; i++) {
+    const ax = px[i] - px[i - 1], ay = py[i] - py[i - 1], bx = px[i + 1] - px[i], by = py[i + 1] - py[i];
+    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by), lc = Math.hypot(ax + bx, ay + by);
+    k[i] = 2 * (ax * by - ay * bx) / (la * lb * lc || 1);
+  }
+  k[0] = k[1]; k[N - 1] = k[N - 2];
+  const ks = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    let s = 0, w = 0;
+    for (let j = -2; j <= 2; j++) { const q = i + j; if (q >= 0 && q < N) { const ww = 3 - Math.abs(j); s += k[q] * ww; w += ww; } }
+    ks[i] = s / w;
+  }
+  /* エイペックス = コーナー内で最もイン側に寄る点 */
+  if (iApex == null) { let m = Infinity; for (let i = tr.iA; i <= tr.iB; i++) if (n[i] < m - 1e-6) { m = n[i]; iApex = i; }
+    let j = iApex; while (j < tr.iB && n[j + 1] < m + 0.02) j++; iApex = Math.round((iApex + j) / 2); }
+  return { n, px, py, seg, dist, kap: ks, iApex, length: dist[N - 1] };
+}
+
+/* 車両 */
+function deriveCar(p) {
+  const m = p.mass, eff = 0.78;
+  return { m, wf: p.wf / 100, h: p.h, L: p.L, tf: p.tf, tr: p.tr, mu: p.mu, ks: 0.15, rs: p.rs / 100,
+    Peff: p.ps * 735.5 * eff, CdA: p.cda, ClA: p.cla, aeroF: 0.45, drive: p.drive, Fz0: m * G / 4,
+    rollGrad: p.rollGrad, pitchGrad: p.pitchGrad };
+}
+function wheelLoads(car, v, ax, ay) {
+  const down = 0.5 * RHO * car.ClA * v * v, lt = car.m * ax * car.h / car.L;
+  let Ff = car.m * G * car.wf - lt + down * car.aeroF, Fr = car.m * G * (1 - car.wf) + lt + down * (1 - car.aeroF);
+  if (Ff < 0) { Fr += Ff; Ff = 0; } if (Fr < 0) { Ff += Fr; Fr = 0; }
+  const M = car.m * ay * car.h;
+  const dF = clamp(M * car.rs / car.tf, -Ff / 2, Ff / 2), dR = clamp(M * (1 - car.rs) / car.tr, -Fr / 2, Fr / 2);
+  return [Ff / 2 - dF, Ff / 2 + dF, Fr / 2 - dR, Fr / 2 + dR]; /* 左前, 右前, 左後, 右後 */
+}
+function tireCap(car, F) { return car.mu * F * Math.max(0.6, 1 + car.ks - car.ks * F / car.Fz0); }
+function dragForce(car, v) { return 0.5 * RHO * car.CdA * v * v + 0.015 * car.m * G; }
+
+/* タイヤの使用状況。ok=グリップ内に収まる */
+function tireState(car, v, ax, ay) {
+  const Fz = wheelLoads(car, v, ax, ay);
+  const capF = tireCap(car, Fz[0]) + tireCap(car, Fz[1]), capR = tireCap(car, Fz[2]) + tireCap(car, Fz[3]);
+  const Fx = car.m * ax + dragForce(car, v), FyF = car.m * Math.abs(ay) * car.wf, FyR = car.m * Math.abs(ay) * (1 - car.wf);
+  let FxF, FxR, ok;
+  if (Fx > 0 && car.drive === 'FR') { FxF = 0; FxR = Fx; }
+  else if (Fx > 0 && car.drive === 'FF') { FxF = Fx; FxR = 0; }
+  else {
+    const remF = Math.sqrt(Math.max(capF * capF - FyF * FyF, 0)), remR = Math.sqrt(Math.max(capR * capR - FyR * FyR, 0));
+    const sum = remF + remR;
+    FxF = sum > 0 ? Fx * remF / sum : Fx / 2; FxR = Fx - FxF;
+  }
+  const uF = Math.hypot(FxF, FyF) / Math.max(capF, 1), uR = Math.hypot(FxR, FyR) / Math.max(capR, 1);
+  ok = uF <= 1.0001 && uR <= 1.0001;
+  return { Fz, uF, uR, ok };
+}
+function axMax(car, v, ay) {
+  const drag = dragForce(car, v), aE = (car.Peff / Math.max(v, 15) - drag) / car.m;
+  if (tireState(car, v, aE, ay).ok) return aE;
+  let lo = -drag / car.m, hi = aE;
+  if (!tireState(car, v, lo, ay).ok) return lo;
+  for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; if (tireState(car, v, mid, ay).ok) lo = mid; else hi = mid; }
+  return lo;
+}
+function axMin(car, v, ay) {
+  let hi = -dragForce(car, v) / car.m, lo = -3 * G;
+  if (!tireState(car, v, hi, ay).ok) return hi;
+  for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; if (tireState(car, v, mid, ay).ok) hi = mid; else lo = mid; }
+  return hi;
+}
+function vLimit(car, kap) {
+  const k = Math.abs(kap); if (k < 1e-5) return 95;
+  let lo = 3, hi = 95;
+  if (tireState(car, hi, 0, hi * hi * k).ok) return hi;
+  for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; if (tireState(car, mid, 0, mid * mid * k).ok) lo = mid; else hi = mid; }
+  return lo;
+}
+
+/* 準定常の速度プロファイル: 限界速度 → 加速側 → 減速側 */
+function simulate(tr, line, car, vEntry) {
+  const N = tr.N, vl = new Float64Array(N), v = new Float64Array(N);
+  for (let i = 0; i < N; i++) vl[i] = vLimit(car, line.kap[i]);
+  v[0] = Math.min(vEntry, vl[0]);
+  for (let i = 0; i < N - 1; i++) {
+    const a = axMax(car, v[i], v[i] * v[i] * line.kap[i]);
+    v[i + 1] = Math.min(Math.sqrt(Math.max(v[i] * v[i] + 2 * a * line.seg[i], 9)), vl[i + 1]);
+  }
+  for (let i = N - 1; i > 0; i--) {
+    const a = axMin(car, v[i], v[i] * v[i] * line.kap[i]);
+    const vb = Math.sqrt(v[i] * v[i] - 2 * a * line.seg[i - 1]);
+    if (vb < v[i - 1]) v[i - 1] = vb;
+  }
+  const ax = new Float64Array(N), ay = new Float64Array(N), t = new Float64Array(N);
+  for (let i = 0; i < N - 1; i++) {
+    ax[i] = (v[i + 1] * v[i + 1] - v[i] * v[i]) / (2 * line.seg[i]);
+    t[i + 1] = t[i] + line.seg[i] / ((v[i] + v[i + 1]) / 2);
+  }
+  ax[N - 1] = ax[N - 2];
+  for (let i = 0; i < N; i++) ay[i] = v[i] * v[i] * line.kap[i];
+  let iMin = 0; for (let i = 1; i < N; i++) if (v[i] < v[iMin]) iMin = i;
+  let iBrake = -1; for (let i = 0; i < iMin; i++) if (ax[i] < -0.3 * G) { iBrake = i; break; }
+  let ayMax = 0; for (let i = 0; i < N; i++) ayMax = Math.max(ayMax, Math.abs(ay[i]));
+  return { v, ax, ay, t, time: t[N - 1], iMin, vMin: v[iMin], vExit: v[tr.iB], vEnd: v[N - 1], iBrake, ayMax,
+    tIn: t[tr.iA], tCorner: t[tr.iB] - t[tr.iA], tOut: t[N - 1] - t[tr.iB] };
+}
+function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); return { line, sim: simulate(tr, line, car, vEntry) }; }
+
+if (typeof module !== 'undefined') module.exports = { buildTrack, makeLine, deriveCar, simulate, runLine, tireState, wheelLoads, G };
+/* ===== 画面 ===== */
+(function () {
+  const $ = id => document.getElementById(id);
+  const MINUS = '−';
+  const sgn = (x, d) => (x > 0 ? '+' : x < 0 ? MINUS : '±') + Math.abs(x).toFixed(d);
+  const LS_KEY = 'cornerline-sim-v1';
+
+  const SERIES = [
+    { id: 'oio', name: 'アウト・イン・アウト', color: 'var(--s1)' },
+    { id: 'late', name: 'レイトエイペックス', color: 'var(--s2)' },
+    { id: 'early', name: 'アーリーエイペックス', color: 'var(--s3)' },
+    { id: 'inside', name: 'インベタ', color: 'var(--s4)' },
+    { id: 'my', name: 'マイライン', color: 'var(--s5)' }
+  ];
+  const CAR_PRESETS = {
+    grb: { label: 'スバル インプレッサ WRX STI (GRB)', v: { mass: 1550, ps: 308, mu: 1.10, wf: 59, h: 0.50, rs: 56, L: 2.625, tf: 1.530, tr: 1.540, cda: 0.78, cla: 0.10, rollGrad: 3.2, pitchGrad: 1.6, drive: 'AWD' } },
+    gr86: { label: 'トヨタ GR86 (ZN8)', v: { mass: 1340, ps: 235, mu: 1.10, wf: 54, h: 0.46, rs: 55, L: 2.575, tf: 1.520, tr: 1.550, cda: 0.60, cla: 0.05, rollGrad: 3.0, pitchGrad: 1.5, drive: 'FR' } },
+    nd: { label: 'マツダ ロードスター (ND 1.5)', v: { mass: 1080, ps: 132, mu: 1.10, wf: 50, h: 0.45, rs: 55, L: 2.310, tf: 1.495, tr: 1.505, cda: 0.64, cla: 0.00, rollGrad: 4.0, pitchGrad: 2.0, drive: 'FR' } },
+    fl5: { label: 'ホンダ シビック TYPE R (FL5)', v: { mass: 1500, ps: 330, mu: 1.10, wf: 62, h: 0.50, rs: 50, L: 2.735, tf: 1.625, tr: 1.615, cda: 0.74, cla: 0.20, rollGrad: 2.6, pitchGrad: 1.4, drive: 'FF' } },
+    gry: { label: 'トヨタ GRヤリス (RZ)', v: { mass: 1350, ps: 272, mu: 1.10, wf: 59, h: 0.50, rs: 56, L: 2.560, tf: 1.535, tr: 1.565, cda: 0.73, cla: 0.10, rollGrad: 3.0, pitchGrad: 1.6, drive: 'AWD' } }
+  };
+  const CORNER_PRESETS = {
+    hair: { label: 'ヘアピン', v: { R: 20, angDeg: 180, W: 12, Ls: 150, Le: 300, vIn: 130 } },
+    low: { label: '低速', v: { R: 40, angDeg: 100, W: 12, Ls: 150, Le: 300, vIn: 140 } },
+    mid: { label: '中速', v: { R: 80, angDeg: 80, W: 12, Ls: 180, Le: 300, vIn: 150 } },
+    high: { label: '高速', v: { R: 150, angDeg: 50, W: 12, Ls: 200, Le: 300, vIn: 170 } }
+  };
+  /* [キー, ラベル, 単位, 最小, 最大, 刻み, 小数桁, 補足] */
+  const FIELDS = {
+    car: [
+      ['mass', '車重（ドライバー込み）', 'kg', 800, 2200, 10, 0],
+      ['ps', '最高出力', 'PS', 80, 700, 2, 0],
+      ['mu', 'タイヤのグリップ μ', '', 0.8, 1.6, 0.01, 2, '目安: 街乗りラジアル 0.9〜1.0、ハイグリップラジアル 1.1〜1.2、Sタイヤ 1.3〜'],
+      ['wf', '前軸重の配分', '%', 38, 66, 0.5, 1],
+      ['h', '重心高', 'm', 0.30, 0.70, 0.01, 2, '高いほど荷重移動が増えて合計グリップが減ります'],
+      ['rs', 'フロントのロール剛性配分', '%', 35, 75, 1, 0, '上げるとアンダー寄り、下げるとオーバー寄り']
+    ],
+    carAdv: [
+      ['L', 'ホイールベース', 'm', 2.0, 3.1, 0.005, 3],
+      ['tf', 'フロントトレッド', 'm', 1.30, 1.75, 0.005, 3],
+      ['tr', 'リアトレッド', 'm', 1.30, 1.75, 0.005, 3],
+      ['cda', '空気抵抗 CdA', 'm²', 0.40, 1.20, 0.01, 2],
+      ['cla', 'ダウンフォース ClA', 'm²', 0, 3, 0.05, 2],
+      ['rollGrad', 'ロール率', '°/G', 1, 6, 0.1, 1],
+      ['pitchGrad', 'ピッチ率', '°/G', 0.5, 4, 0.1, 1]
+    ],
+    corner: [
+      ['R', 'コーナー半径（コース中央）', 'm', 15, 200, 1, 0],
+      ['angDeg', '曲がる角度', '°', 30, 180, 5, 0],
+      ['W', 'コース幅', 'm', 8, 16, 0.5, 1],
+      ['Ls', '進入ストレートの長さ', 'm', 60, 300, 10, 0],
+      ['Le', '立ち上がりストレートの長さ', 'm', 50, 600, 10, 0],
+      ['vIn', '区間に入るときの速度', 'km/h', 60, 220, 5, 0]
+    ],
+    my: [
+      ['apex', 'エイペックスの位置（コーナーの何%地点か）', '%', 20, 85, 1, 0],
+      ['delay', 'ターンインを遅らせる距離', 'm', 0, 30, 1, 0],
+      ['entry', '進入時の位置（−100 イン 〜 +100 アウト）', '', -100, 100, 10, 0],
+      ['exit', '立ち上がりの位置（−100 イン 〜 +100 アウト）', '', -100, 100, 10, 0]
+    ]
+  };
+  const groupOf = g => (g === 'carAdv' ? 'car' : g);
+
+  /* 状態 */
+  let P = { preset: 'grb', car: Object.assign({}, CAR_PRESETS.grb.v), cornerPreset: 'mid', corner: Object.assign({}, CORNER_PRESETS.mid.v), my: { apex: 55, delay: 0, entry: 100, exit: 100 }, sel: 'my' };
+  let restored = false;
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    if (s && s.car && s.corner && s.my) {
+      for (const g of ['car', 'corner', 'my']) for (const k in P[g]) if (typeof s[g][k] === typeof P[g][k]) P[g][k] = s[g][k];
+      if (CAR_PRESETS[s.preset] || s.preset === 'custom') P.preset = s.preset;
+      if (CORNER_PRESETS[s.cornerPreset] || s.cornerPreset === 'custom') P.cornerPreset = s.cornerPreset;
+      if (SERIES.some(x => x.id === s.sel)) P.sel = s.sel;
+      restored = true;
+    }
+  } catch (e) { /* 保存なしでも動く */ }
+  const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(P)); } catch (e) { /* 保存不可でも続行 */ } };
+
+  let tr, car, RES = [], sweep = null, scrub = 0, userScrub = false, ctxSpeed = null, ctxDelta = null, ctxMap = null, ctxGG = null;
+  const resOf = id => RES.find(r => r.id === id);
+
+  /* 操作パネル */
+  function fieldHTML(g, f) {
+    const id = 'f-' + g + '-' + f[0];
+    return '<div class="fld"><div class="fld-top"><label for="' + id + '">' + f[1] + '</label><output id="o-' + g + '-' + f[0] + '" for="' + id + '"></output></div>' +
+      '<input type="range" id="' + id + '" data-g="' + g + '" data-k="' + f[0] + '" min="' + f[3] + '" max="' + f[4] + '" step="' + f[5] + '">' +
+      (f[7] ? '<p class="hint">' + f[7] + '</p>' : '') + '</div>';
+  }
+  function buildControls() {
+    for (const g in FIELDS) $('g-' + g).innerHTML = FIELDS[g].map(f => fieldHTML(g, f)).join('');
+    $('f-preset').innerHTML = Object.keys(CAR_PRESETS).map(k => '<option value="' + k + '">' + CAR_PRESETS[k].label + '</option>').join('') + '<option value="custom">カスタム（自分で入力）</option>';
+    $('cornerseg').innerHTML = Object.keys(CORNER_PRESETS).map(k => '<button type="button" data-c="' + k + '">' + CORNER_PRESETS[k].label + '</button>').join('');
+    const wide = window.matchMedia('(min-width: 981px)').matches;
+    $('d-car').open = wide; $('d-corner').open = wide; $('d-my').open = true;
+  }
+  function syncControls() {
+    for (const g in FIELDS) for (const f of FIELDS[g]) {
+      const v = P[groupOf(g)][f[0]];
+      $('f-' + g + '-' + f[0]).value = v;
+      $('o-' + g + '-' + f[0]).textContent = (g === 'my' && (f[0] === 'entry' || f[0] === 'exit') ? sgn(v, 0) : v.toFixed(f[6])) + (f[2] ? ' ' + f[2] : '');
+    }
+    $('f-preset').value = P.preset; $('f-drive').value = P.car.drive;
+    $('cornerseg').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.c === P.cornerPreset ? 'true' : 'false'));
+  }
+
+  /* 計算 */
+  const mySpec = (apex, delay) => ({ entry: P.my.entry / 100, exit: P.my.exit / 100, apex: (apex == null ? P.my.apex : apex) / 100, delay: delay == null ? P.my.delay : delay });
+  function compute() {
+    tr = buildTrack(P.corner); car = deriveCar(P.car);
+    const vE = P.corner.vIn / 3.6;
+    const specs = { oio: { entry: 1, exit: 1, apex: null }, late: { entry: 1, exit: 1, apex: 0.65, delay: 10 }, early: { entry: 1, exit: 1, apex: 0.32 }, inside: { fixed: -1 }, my: mySpec() };
+    RES = SERIES.map(s => Object.assign({}, s, runLine(tr, car, vE, specs[s.id])));
+    if (!userScrub) scrub = resOf(P.sel).sim.iMin;
+    scrub = clamp(scrub, 0, tr.N - 1);
+  }
+  function computeSweep() {
+    const vE = P.corner.vIn / 3.6, out = [];
+    for (let a = 20; a <= 85; a += 5) out.push({ a, t: runLine(tr, car, vE, mySpec(a)).sim.time });
+    sweep = out; renderSweep();
+  }
+  function autoSearch() {
+    const t0 = buildTrack(P.corner), c0 = deriveCar(P.car), vE = P.corner.vIn / 3.6;
+    let best = null;
+    const tryIt = (a, d) => { const t = runLine(t0, c0, vE, { entry: 1, exit: 1, apex: a / 100, delay: d }).sim.time; if (!best || t < best.t - 1e-6) best = { t, a, d }; };
+    for (const d of [0, 4, 8, 12, 16, 20, 25, 30]) for (let a = 35; a <= 80; a += 5) tryIt(a, d);
+    const b0 = best;
+    for (const d of [b0.d - 2, b0.d, b0.d + 2]) for (const a of [b0.a - 3, b0.a - 1, b0.a + 1, b0.a + 3]) if (d >= 0 && d <= 30 && a >= 20 && a <= 85) tryIt(a, d);
+    P.my = { apex: best.a, delay: best.d, entry: 100, exit: 100 };
+  }
+
+  /* 位置の言い方 */
+  const relOf = i => tr.st[i] - P.corner.Ls;
+  const arcLen = () => tr.R * tr.ang;
+  function posText(i) {
+    const r = relOf(i), a = arcLen();
+    if (r < -0.5) return 'コーナー入口の ' + (-r).toFixed(0) + ' m 手前';
+    if (r <= a) return 'コーナーの ' + (r / a * 100).toFixed(0) + '% 地点';
+    return 'コーナー出口から ' + (r - a).toFixed(0) + ' m';
+  }
+
+  /* 結論 */
+  function renderVerdict() {
+    const sorted = RES.slice().sort((a, b) => a.sim.time - b.sim.time), best = sorted[0], ref = resOf('oio');
+    const kmh = v => v * 3.6;
+    let txt;
+    if (best.id === 'oio' || Math.abs(best.sim.time - ref.sim.time) < 0.0005) {
+      const second = sorted.find(r => r.id !== best.id && Math.abs(r.sim.time - best.sim.time) >= 0.0005) || sorted[1];
+      txt = '<p>この条件では<strong>' + best.name + '</strong>が最速です。2番手の' + second.name + 'とは <strong class="num">' + (second.sim.time - best.sim.time).toFixed(3) + ' 秒</strong>差。' +
+        'ボトム速度は <span class="num">' + kmh(best.sim.vMin).toFixed(1) + ' km/h</span>、コーナー出口では <span class="num">' + kmh(best.sim.vExit).toFixed(1) + ' km/h</span> です。</p>';
+    } else {
+      const d = best.sim.time - ref.sim.time;
+      const ph = [['進入', best.sim.tIn - ref.sim.tIn], ['旋回', best.sim.tCorner - ref.sim.tCorner], ['立ち上がり', best.sim.tOut - ref.sim.tOut]].sort((a, b) => a[1] - b[1])[0];
+      txt = '<p><strong>' + best.name + '</strong>が最速で、基準のアウト・イン・アウトより <strong class="num">' + Math.abs(d).toFixed(3) + ' 秒</strong>速くなりました。' +
+        'ボトム速度は <span class="num">' + sgn(kmh(best.sim.vMin - ref.sim.vMin), 1) + ' km/h</span>、コーナー出口速度は <span class="num">' + sgn(kmh(best.sim.vExit - ref.sim.vExit), 1) + ' km/h</span>。' +
+        '差が一番ついたのは<strong>' + ph[0] + '</strong>区間（<span class="num">' + sgn(ph[1], 3) + ' 秒</span>）です。</p>';
+    }
+    const i = best.sim.iMin, ts = tireState(car, best.sim.v[i], best.sim.ax[i], best.sim.ay[i]);
+    const bal = ts.uF - ts.uR > 0.03 ? 'フロントが先に限界に達しています（アンダーステア傾向）' : ts.uR - ts.uF > 0.03 ? 'リアが先に限界に達しています（オーバーステア傾向）' : '前後がほぼ同時に限界に達しています（ニュートラル）';
+    txt += '<p>ボトム付近では' + bal + '。</p>';
+    $('verdict').innerHTML = '<div style="display:grid;gap:4px"><div class="eyebrow">この条件での最速</div><div class="v-name"><span class="key" style="background:' + best.color + '"></span>' + best.name + '</div>' +
+      '<div class="v-time">' + best.sim.time.toFixed(3) + '<small>秒</small></div></div><div class="v-text">' + txt + '</div>';
+  }
+
+  /* 凡例（選択ボタン） */
+  function renderLegend() {
+    $('legend').innerHTML = RES.map(r => '<button type="button" data-sel="' + r.id + '" aria-pressed="' + (r.id === P.sel) + '"><span class="key" style="background:' + r.color + '"></span>' + r.name + '</button>').join('');
+  }
+
+  /* 比較表 */
+  function renderTable() {
+    const ref = resOf('oio'), bestT = Math.min.apply(null, RES.map(r => r.sim.time));
+    const head = ['ライン', '区間タイム（秒）', '基準との差', 'ボトム速度', 'コーナー出口速度', '区間終端速度', 'ブレーキ開始', '進入', '旋回', '立ち上がり', '走行距離'];
+    const rows = RES.map(r => {
+      const s = r.sim, d = s.time - ref.sim.time;
+      const brake = s.iBrake < 0 ? 'なし' : (relOf(s.iBrake) < 0 ? '入口の ' + (-relOf(s.iBrake)).toFixed(0) + ' m 手前' : '入口の ' + relOf(s.iBrake).toFixed(0) + ' m 先');
+      return '<tr class="' + (r.id === P.sel ? 'sel' : '') + '"><td><label class="rowsel"><input type="radio" name="sel" value="' + r.id + '"' + (r.id === P.sel ? ' checked' : '') + '><span class="key" style="background:' + r.color + '"></span>' + r.name + '</label>' + (r.id === 'oio' ? '<span class="tag">基準</span>' : '') + '</td>' +
+        '<td class="t">' + (Math.abs(s.time - bestT) < 0.0005 ? '<span class="pill">最速</span>' : '') + s.time.toFixed(3) + '</td>' +
+        '<td>' + (r.id === 'oio' ? '—' : sgn(d, 3)) + '</td>' +
+        '<td>' + (s.vMin * 3.6).toFixed(1) + ' km/h</td><td>' + (s.vExit * 3.6).toFixed(1) + ' km/h</td><td>' + (s.vEnd * 3.6).toFixed(1) + ' km/h</td>' +
+        '<td style="font-family:var(--font-body)">' + brake + '</td>' +
+        '<td>' + s.tIn.toFixed(3) + '</td><td>' + s.tCorner.toFixed(3) + '</td><td>' + s.tOut.toFixed(3) + '</td><td>' + r.line.length.toFixed(1) + ' m</td></tr>';
+    }).join('');
+    $('table').innerHTML = '<table><thead><tr>' + head.map(h => '<th scope="col">' + h + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  /* コース図 */
+  function renderMap() {
+    const el = $('map'), cw = el.clientWidth || 600, ch = el.clientHeight || 360, N = tr.N, hw = tr.W / 2;
+    let iS = tr.iA; RES.forEach(r => { if (r.sim.iBrake >= 0) iS = Math.min(iS, r.sim.iBrake); });
+    const i0 = Math.max(0, iS - Math.round(25 / tr.ds)), i1 = Math.min(N - 1, tr.iB + Math.round(70 / tr.ds));
+    const X = (i, o) => tr.cx[i] + o * tr.nx[i], Y = (i, o) => -(tr.cy[i] + o * tr.ny[i]);
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let i = i0; i <= i1; i++) for (const o of [-hw, hw]) { x0 = Math.min(x0, X(i, o)); x1 = Math.max(x1, X(i, o)); y0 = Math.min(y0, Y(i, o)); y1 = Math.max(y1, Y(i, o)); }
+    const pad0 = 6, sc0 = Math.min(cw / (x1 - x0 + 2 * pad0), ch / (y1 - y0 + 2 * pad0));
+    const pad = pad0 + 34 / sc0; /* ラベル用の余白（画面上で約34px） */
+    const vb = [x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad], sc = Math.min(cw / vb[2], ch / vb[3]), u = 1 / sc;
+    const pts = (o, a, b, rev) => { const p = []; if (!rev) for (let i = a; i <= b; i++) p.push(X(i, o).toFixed(2) + ',' + Y(i, o).toFixed(2)); else for (let i = b; i >= a; i--) p.push(X(i, o).toFixed(2) + ',' + Y(i, o).toFixed(2)); return p.join(' '); };
+    let s = '<svg viewBox="' + vb.map(v => v.toFixed(2)).join(' ') + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="コース図と各ラインの軌跡">';
+    s += '<polygon points="' + pts(hw, i0, i1) + ' ' + pts(-hw, i0, i1, true) + '" fill="var(--asphalt)"/>';
+    const curb = (o, a, b) => { a = Math.max(a, i0); b = Math.min(b, i1); if (b <= a) return ''; const p = pts(o, a, b); return '<polyline points="' + p + '" fill="none" stroke="var(--curbw)" stroke-width="1.1"/><polyline points="' + p + '" fill="none" stroke="var(--curb)" stroke-width="1.1" stroke-dasharray="2.4 2.4"/>'; };
+    const k30 = Math.round(30 / tr.ds);
+    s += curb(-hw - 0.55, tr.iA - 2, tr.iB + 2) + curb(hw + 0.55, tr.iB, tr.iB + k30 + 6) + curb(hw + 0.55, tr.iA - k30, tr.iA);
+    const lineOf = (r, selected) => { const p = []; for (let i = i0; i <= i1; i++) p.push(r.line.px[i].toFixed(2) + ',' + (-r.line.py[i]).toFixed(2)); return '<polyline points="' + p.join(' ') + '" fill="none" stroke="' + r.color + '" stroke-width="' + (selected ? 3.2 : 1.8) + '" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"' + (selected ? '' : ' opacity="0.85"') + '/>'; };
+    RES.filter(r => r.id !== P.sel).forEach(r => { s += lineOf(r, false); });
+    const sel = resOf(P.sel); s += lineOf(sel, true);
+    const fs = 11.5 * u;
+    const textW = t => { let w = 0; for (const ch of t) w += ch.charCodeAt(0) < 0x2000 ? 0.6 : 1; return w * fs; };
+    const fitX = (lx, anchor, t) => { const w = textW(t), L = vb[0] + 3 * u, Rr = vb[0] + vb[2] - 3 * u;
+      return anchor === 'start' ? Math.max(L, Math.min(lx, Rr - w)) : anchor === 'end' ? Math.min(Rr, Math.max(lx, L + w)) : Math.max(L + w / 2, Math.min(lx, Rr - w / 2)); };
+    const label = (i, side, text, strong) => {
+      if (i < i0 || i > i1) return '';
+      const ax = sel.line.px[i], ay = -sel.line.py[i], lx = X(i, side * (hw + 16 * u)), ly = Y(i, side * (hw + 16 * u));
+      const dx = side * tr.nx[i], dy = -side * tr.ny[i];
+      const anchor = dx > 0.4 ? 'start' : dx < -0.4 ? 'end' : 'middle', base = dy > 0.4 ? 'hanging' : dy < -0.4 ? 'auto' : 'middle';
+      return '<line x1="' + ax + '" y1="' + ay + '" x2="' + X(i, side * (hw + 12 * u)) + '" y2="' + Y(i, side * (hw + 12 * u)) + '" stroke="var(--ink2)" stroke-width="1" vector-effect="non-scaling-stroke"/>' +
+        '<circle cx="' + ax + '" cy="' + ay + '" r="' + (4.5 * u) + '" fill="' + (strong ? 'var(--ink)' : 'var(--surface)') + '" stroke="' + (strong ? 'var(--surface)' : 'var(--ink)') + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+        '<text class="jp ' + (strong ? 'strong' : 'ink') + '" x="' + fitX(lx, anchor, text) + '" y="' + ly + '" text-anchor="' + anchor + '" dominant-baseline="' + base + '" style="font-size:' + fs + 'px">' + text + '</text>';
+    };
+    const dirText = (i, text) => { const lx = X(i, -(hw + 14 * u)), ly = Y(i, -(hw + 14 * u)), dx = -tr.nx[i], dy = tr.ny[i], an = dx > 0.4 ? 'start' : dx < -0.4 ? 'end' : 'middle';
+      return '<text class="jp" x="' + fitX(lx, an, text) + '" y="' + ly + '" text-anchor="' + an + '" dominant-baseline="' + (dy > 0.4 ? 'hanging' : dy < -0.4 ? 'auto' : 'middle') + '" style="font-size:' + fs + 'px">' + text + '</text>'; };
+    s += dirText(i0 + Math.round(8 / tr.ds), '進入 →') + dirText(i1 - Math.round(8 / tr.ds), '→ 立ち上がり');
+    if (sel.sim.iBrake >= 0) s += label(sel.sim.iBrake, 1, 'ブレーキ開始', false);
+    s += label(sel.line.iApex, -1, 'エイペックス', false);
+    s += label(sel.sim.iMin, 1, 'ボトム ' + (sel.sim.vMin * 3.6).toFixed(1) + ' km/h', true);
+    s += '<g id="mapcar"><rect x="-2.2" y="-0.9" width="4.4" height="1.8" rx="0.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2" vector-effect="non-scaling-stroke"/></g></svg>';
+    el.innerHTML = s;
+    ctxMap = { i0, i1, vb, sc };
+  }
+  function updateMapCar() {
+    const g = $('mapcar'); if (!g) return;
+    const sel = resOf(P.sel), i = clamp(scrub, 1, tr.N - 2);
+    if (scrub < ctxMap.i0 || scrub > ctxMap.i1) { g.setAttribute('visibility', 'hidden'); return; }
+    const th = Math.atan2(sel.line.py[i + 1] - sel.line.py[i - 1], sel.line.px[i + 1] - sel.line.px[i - 1]);
+    g.setAttribute('visibility', 'visible');
+    g.setAttribute('transform', 'translate(' + sel.line.px[i] + ' ' + (-sel.line.py[i]) + ') rotate(' + (-th * 180 / Math.PI) + ')');
+  }
+
+  /* グラフ共通 */
+  function tickStep(span, n) { const raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
+  function tickList(lo, hi, step) { const out = []; for (let t = Math.ceil(lo / step - 1e-9) * step; t <= hi + 1e-9; t += step) out.push(+t.toFixed(8)); return out; }
+  function frame(el, o) {
+    const w = el.clientWidth || 600, h = el.clientHeight || 240, m = { l: 46, r: 14, t: 12, b: 36 };
+    const x = v => m.l + (v - o.xd[0]) / (o.xd[1] - o.xd[0]) * (w - m.l - m.r), y = v => h - m.b - (v - o.yd[0]) / (o.yd[1] - o.yd[0]) * (h - m.t - m.b);
+    let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="' + o.aria + '">';
+    (o.bands || []).forEach(b => { s += '<rect x="' + x(b.x0) + '" y="' + m.t + '" width="' + (x(b.x1) - x(b.x0)) + '" height="' + (h - m.t - m.b) + '" fill="var(--ink)" opacity="0.05"/><text class="jp" x="' + (x(b.x0) + x(b.x1)) / 2 + '" y="' + (m.t + 13) + '" text-anchor="middle">' + b.label + '</text>'; });
+    o.yt.forEach(t => { s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="' + (o.zero && t === 0 ? 'var(--axis)' : 'var(--grid)') + '"/><text x="' + (m.l - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + o.yf(t) + '</text>'; });
+    s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + (h - m.b) + '" y2="' + (h - m.b) + '" stroke="var(--axis)"/>';
+    o.xt.forEach(t => { s += '<text x="' + x(t) + '" y="' + (h - m.b + 16) + '" text-anchor="middle">' + o.xf(t) + '</text>'; });
+    s += '<text class="jp" x="' + (w - m.r) + '" y="' + (h - 4) + '" text-anchor="end">' + o.xtitle + '</text>';
+    return { s, x, y, w, h, m };
+  }
+  const polyOf = (xs, ys, x, y) => { const p = []; for (let i = 0; i < xs.length; i++) p.push(x(xs[i]).toFixed(1) + ',' + y(ys[i]).toFixed(1)); return p.join(' '); };
+  function hoverLayer(id, fr) {
+    return '<g id="' + id + '-h"><line id="' + id + '-x" y1="' + fr.m.t + '" y2="' + (fr.h - fr.m.b) + '" stroke="var(--ink2)" stroke-width="1"/>' +
+      RES.map(r => '<circle id="' + id + '-d-' + r.id + '" r="' + (r.id === P.sel ? 5 : 4) + '" fill="' + r.color + '" stroke="var(--surface)" stroke-width="2"/>').join('') + '</g>';
+  }
+  function xAxisCfg() {
+    const rel = Array.from(tr.st, s => s - P.corner.Ls), xd = [rel[0], rel[rel.length - 1]], st = tickStep(xd[1] - xd[0], Math.max(4, Math.min(10, ($('speed').clientWidth || 600) / 80)));
+    return { rel, xd, xt: tickList(xd[0], xd[1], st), xf: t => (t > 0 ? '+' : t < 0 ? MINUS : '') + Math.abs(t), xtitle: 'コーナー入口からの距離（m）', bands: [{ x0: 0, x1: arcLen(), label: 'コーナー' }] };
+  }
+  function renderSpeed() {
+    const el = $('speed'), xa = xAxisCfg();
+    let lo = 1e9, hi = 0; RES.forEach(r => { for (let i = 0; i < tr.N; i++) { const k = r.sim.v[i] * 3.6; if (k < lo) lo = k; if (k > hi) hi = k; } });
+    const st = tickStep(hi - lo, 5), yd = [Math.floor(lo / st) * st, Math.ceil(hi / st) * st];
+    const fr = frame(el, Object.assign({ yd, yt: tickList(yd[0], yd[1], st), yf: t => t.toFixed(0), aria: '各ラインの速度の推移' }, xa));
+    let s = fr.s;
+    const draw = r => { s += '<polyline points="' + polyOf(xa.rel, Array.from(r.sim.v, v => v * 3.6), fr.x, fr.y) + '" fill="none" stroke="' + r.color + '" stroke-width="' + (r.id === P.sel ? 2.6 : 2) + '" stroke-linejoin="round" stroke-linecap="round"/>'; };
+    RES.filter(r => r.id !== P.sel).forEach(draw); draw(resOf(P.sel));
+    el.innerHTML = s + hoverLayer('speed', fr) + '</svg><div class="tip" id="speed-tip" hidden></div>';
+    ctxSpeed = { fr, xa, val: (r, i) => r.sim.v[i] * 3.6, fmt: v => v.toFixed(1) + ' km/h' };
+  }
+  function renderDelta() {
+    const el = $('delta'), xa = xAxisCfg(), ref = resOf('oio');
+    let lo = 0, hi = 0; RES.forEach(r => { for (let i = 0; i < tr.N; i++) { const d = r.sim.t[i] - ref.sim.t[i]; if (d < lo) lo = d; if (d > hi) hi = d; } });
+    if (hi - lo < 0.02) { hi += 0.01; lo -= 0.01; }
+    const st = tickStep(hi - lo, 4), yd = [Math.floor(lo / st - 1e-9) * st, Math.ceil(hi / st + 1e-9) * st], dec = st < 0.1 ? 2 : 1;
+    const fr = frame(el, Object.assign({ yd, yt: tickList(yd[0], yd[1], st), yf: t => (Math.abs(t) < 1e-9 ? '0' : sgn(t, dec)), zero: true, aria: '基準ラインに対するタイム差の推移' }, xa, { bands: [{ x0: 0, x1: arcLen(), label: '' }] }));
+    let s = fr.s;
+    const draw = r => { s += '<polyline points="' + polyOf(xa.rel, Array.from(r.sim.t, (t, i) => t - ref.sim.t[i]), fr.x, fr.y) + '" fill="none" stroke="' + r.color + '" stroke-width="' + (r.id === P.sel ? 2.6 : 2) + '" stroke-linejoin="round" stroke-linecap="round"/>'; };
+    RES.filter(r => r.id !== P.sel).forEach(draw); draw(resOf(P.sel));
+    el.innerHTML = s + hoverLayer('delta', fr) + '</svg><div class="tip" id="delta-tip" hidden></div>';
+    ctxDelta = { fr, xa, val: (r, i) => r.sim.t[i] - ref.sim.t[i], fmt: v => sgn(v, 3) + ' 秒' };
+  }
+  function updateCross(id, c) {
+    if (!c) return;
+    const xv = c.fr.x(c.xa.rel[scrub]); const ln = $(id + '-x'); if (!ln) return;
+    ln.setAttribute('x1', xv); ln.setAttribute('x2', xv);
+    RES.forEach(r => { const d = $(id + '-d-' + r.id); d.setAttribute('cx', xv); d.setAttribute('cy', c.fr.y(c.val(r, scrub))); });
+  }
+  function showTip(id, c, px) {
+    const tip = $(id + '-tip'); if (!tip) return;
+    tip.innerHTML = '<b>' + posText(scrub) + '</b>' + RES.map(r => '<div class="row"' + (r.id === P.sel ? ' style="font-weight:700"' : '') + '><span class="key" style="background:' + r.color + '"></span>' + r.name + '<span class="v">' + c.fmt(c.val(r, scrub)) + '</span></div>').join('');
+    tip.hidden = false;
+    const w = tip.offsetWidth, cw = c.fr.w;
+    tip.style.left = Math.max(4, Math.min(cw - w - 4, px + 14 + w > cw ? px - w - 14 : px + 14)) + 'px';
+  }
+  function bindPlot(id, getCtx) {
+    const el = $(id);
+    const move = e => { const c = getCtx(); if (!c) return; const r = el.getBoundingClientRect(), px = e.clientX - r.left;
+      const xv = c.xa.xd[0] + (px - c.fr.m.l) / (c.fr.w - c.fr.m.l - c.fr.m.r) * (c.xa.xd[1] - c.xa.xd[0]);
+      setScrub(Math.round((xv + P.corner.Ls) / tr.ds), true); showTip(id, c, c.fr.x(c.xa.rel[scrub])); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerdown', move);
+    el.addEventListener('pointerleave', () => { const t = $(id + '-tip'); if (t) t.hidden = true; });
+  }
+
+  /* エイペックス位置の総当たり */
+  function renderSweep() {
+    const el = $('sweep'); if (!sweep) { el.innerHTML = ''; return; }
+    const ref = resOf('oio'), my = resOf('my');
+    let lo = Math.min(ref.sim.time, my.sim.time), hi = Math.max(ref.sim.time, my.sim.time); sweep.forEach(p => { lo = Math.min(lo, p.t); hi = Math.max(hi, p.t); });
+    if (hi - lo < 0.05) hi = lo + 0.05;
+    const st = tickStep(hi - lo, 4), yd = [Math.floor(lo / st - 1e-9) * st, Math.ceil(hi / st + 1e-9) * st], dec = st < 0.1 ? 2 : 1;
+    if (lo - yd[0] < 0.45 * st) yd[0] -= st;
+    const fr = frame(el, { xd: [18, 87], yd, xt: [20, 30, 40, 50, 60, 70, 80], yt: tickList(yd[0], yd[1], st), xf: t => t + '%', yf: t => t.toFixed(dec), xtitle: 'エイペックスの位置', aria: 'エイペックス位置ごとの区間タイム' });
+    let s = fr.s;
+    const yr = fr.y(ref.sim.time);
+    s += '<line x1="' + fr.m.l + '" x2="' + (fr.w - fr.m.r) + '" y1="' + yr + '" y2="' + yr + '" stroke="var(--s1)" stroke-width="2"/>';
+    const cx = fr.x(P.my.apex), cy = fr.y(my.sim.time), myTxt = 'いまのマイライン ' + P.my.apex + '% / ' + my.sim.time.toFixed(3) + ' 秒';
+    const refLeft = !(cx < fr.m.l + 190 && Math.abs(cy + 22 - yr) < 22);
+    s += '<text class="jp ink" x="' + (refLeft ? fr.m.l + 4 : fr.w - fr.m.r - 4) + '" y="' + (yr < fr.m.t + 20 ? yr + 14 : yr - 6) + '" text-anchor="' + (refLeft ? 'start' : 'end') + '">アウト・イン・アウト ' + ref.sim.time.toFixed(3) + ' 秒</text>';
+    s += '<polyline points="' + polyOf(sweep.map(p => p.a), sweep.map(p => p.t), fr.x, fr.y) + '" fill="none" stroke="var(--s5)" stroke-width="2" stroke-linejoin="round"/>';
+    sweep.forEach(p => { s += '<circle class="swp" data-a="' + p.a + '" cx="' + fr.x(p.a) + '" cy="' + fr.y(p.t) + '" r="4" fill="var(--s5)" stroke="var(--surface)" stroke-width="2" style="cursor:pointer"><title>エイペックス ' + p.a + '%: ' + p.t.toFixed(3) + ' 秒</title></circle>'; });
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="6.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>';
+    const half = myTxt.length * 5.2, tx = Math.max(fr.m.l + half, Math.min(fr.w - fr.m.r - half, cx));
+    s += '<text class="jp strong" x="' + tx + '" y="' + (cy + 22) + '" text-anchor="middle">' + myTxt + '</text>';
+    el.innerHTML = s + '</svg><div class="tip" id="sweep-tip" hidden></div>';
+    el._fr = fr;
+  }
+
+  /* G-G 線図 */
+  function renderGG() {
+    const el = $('gg'), w = el.clientWidth || 300, h = el.clientHeight || 230, sel = resOf(P.sel);
+    const gm = Math.ceil((car.mu + 0.3) * 2) / 2, rad = Math.min(w, h) / 2 - 22, cx = w / 2, cy = h / 2, k = rad / gm;
+    let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="選択中のラインの前後Gと横Gの軌跡">';
+    for (let g = 0.5; g <= gm + 1e-9; g += 0.5) s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + g * k + '" fill="none" stroke="var(--grid)"/><text x="' + (cx + 3) + '" y="' + (cy - g * k + 11) + '">' + g.toFixed(1) + ' G</text>';
+    s += '<line x1="' + (cx - rad) + '" x2="' + (cx + rad) + '" y1="' + cy + '" y2="' + cy + '" stroke="var(--axis)"/><line x1="' + cx + '" x2="' + cx + '" y1="' + (cy - rad) + '" y2="' + (cy + rad) + '" stroke="var(--axis)"/>';
+    s += '<text class="jp" x="' + cx + '" y="' + (cy - rad - 6) + '" text-anchor="middle">加速</text><text class="jp" x="' + cx + '" y="' + (cy + rad + 15) + '" text-anchor="middle">減速</text>';
+    s += '<text class="jp" x="' + (cx - rad - 4) + '" y="' + (cy - 5) + '" text-anchor="start">左</text><text class="jp" x="' + (cx + rad + 4) + '" y="' + (cy - 5) + '" text-anchor="end">右</text>';
+    const p = []; for (let i = 0; i < tr.N; i++) p.push((cx - sel.sim.ay[i] / G * k).toFixed(1) + ',' + (cy - sel.sim.ax[i] / G * k).toFixed(1));
+    s += '<polyline points="' + p.join(' ') + '" fill="none" stroke="' + sel.color + '" stroke-width="2" stroke-linejoin="round"/>';
+    s += '<circle id="ggdot" r="5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/></svg>';
+    el.innerHTML = s; ctxGG = { cx, cy, k };
+    $('ggsub').textContent = sel.name + ' のGの使い方（横軸: 横G、縦軸: 前後G）';
+  }
+
+  /* 車両状態 */
+  function renderState() {
+    const sel = resOf(P.sel), i = scrub, v = sel.sim.v[i], ax = sel.sim.ax[i], ay = sel.sim.ay[i];
+    const ts = tireState(car, v, ax, ay), kg = ts.Fz.map(f => f / G), full = car.m / 2;
+    const roll = car.rollGrad * ay / G, pitch = car.pitchGrad * ax / G, EX = 4;
+    $('statepos').textContent = sel.name + ' ／ ' + posText(i);
+    const tire = (x, y, idx, anchor) => {
+      const ratio = clamp(kg[idx] / full, 0, 1);
+      return '<rect x="' + x + '" y="' + y + '" width="15" height="30" rx="4" fill="var(--s1)" fill-opacity="' + (0.10 + 0.90 * ratio).toFixed(2) + '" stroke="var(--ink2)"/>' +
+        '<text class="strong" x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 16) + '" text-anchor="' + anchor + '" style="font-size:14px">' + kg[idx].toFixed(0) + '</text>' +
+        '<text x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 28) + '" text-anchor="' + anchor + '">kg</text>';
+    };
+    let s = '<svg viewBox="0 0 330 182" role="img" aria-label="4輪の荷重とロール・ピッチの様子" style="display:block;width:100%;height:auto;max-width:420px">';
+    s += '<rect x="62" y="26" width="56" height="124" rx="16" fill="none" stroke="var(--axis)" stroke-width="1.5"/><path d="M72 62 Q90 50 108 62" fill="none" stroke="var(--axis)" stroke-width="1.5"/>';
+    s += '<text class="jp" x="90" y="16" text-anchor="middle">前</text>';
+    s += tire(44, 36, 0, 'end') + tire(121, 36, 1, 'start') + tire(44, 110, 2, 'end') + tire(121, 110, 3, 'start');
+    s += '<text class="jp" x="90" y="174" text-anchor="middle">4輪の荷重</text>';
+    /* 後ろから見た図（ロール） */
+    s += '<text class="jp ink" x="255" y="16" text-anchor="middle">ロール ' + Math.abs(roll).toFixed(1) + '°' + (roll > 0.05 ? ' 右へ' : roll < -0.05 ? ' 左へ' : '') + '</text>';
+    s += '<line x1="196" x2="314" y1="78" y2="78" stroke="var(--axis)"/><rect x="206" y="60" width="11" height="18" rx="3" fill="var(--ink2)"/><rect x="293" y="60" width="11" height="18" rx="3" fill="var(--ink2)"/>';
+    s += '<g transform="rotate(' + (roll * EX).toFixed(2) + ' 255 72)"><rect x="214" y="34" width="82" height="30" rx="8" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><rect x="230" y="26" width="50" height="12" rx="5" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/></g>';
+    /* 横から見た図（ピッチ）: 右が前 */
+    s += '<text class="jp ink" x="255" y="106" text-anchor="middle">ピッチ ' + Math.abs(pitch).toFixed(1) + '°' + (pitch < -0.05 ? ' 前下がり' : pitch > 0.05 ? ' 後ろ下がり' : '') + '</text>';
+    s += '<line x1="196" x2="314" y1="166" y2="166" stroke="var(--axis)"/><circle cx="218" cy="157" r="9" fill="var(--ink2)"/><circle cx="290" cy="157" r="9" fill="var(--ink2)"/>';
+    s += '<g transform="rotate(' + (-pitch * EX).toFixed(2) + ' 254 150)"><rect x="200" y="132" width="108" height="20" rx="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><path d="M226 132 L236 118 L272 118 L286 132" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/></g>';
+    s += '<text class="jp" x="318" y="146" text-anchor="middle">前</text></svg>';
+    const meter = (label, u) => '<div class="meter"><span>' + label + '</span><span class="track"><span class="fill' + (u >= 0.985 ? ' lim' : '') + '" style="display:block;width:' + clamp(u * 100, 0, 100).toFixed(0) + '%"></span></span><span class="val">' + (u * 100).toFixed(0) + '%' + (u >= 0.985 ? ' 限界' : '') + '</span></div>';
+    $('state').innerHTML = '<div style="display:grid;gap:12px">' +
+      '<div class="stats"><div class="stat"><div class="l">速度</div><div class="v">' + (v * 3.6).toFixed(1) + '<small>km/h</small></div></div>' +
+      '<div class="stat"><div class="l">前後G（＋加速）</div><div class="v">' + sgn(ax / G, 2) + '<small>G</small></div></div>' +
+      '<div class="stat"><div class="l">横G</div><div class="v">' + Math.abs(ay / G).toFixed(2) + '<small>G</small></div></div></div>' + s +
+      '<div style="display:grid;gap:6px"><div class="sub">タイヤの使用率（グリップをどれだけ使っているか）</div>' + meter('フロント', ts.uF) + meter('リア', ts.uR) + '</div>' +
+      '<p class="sub">ロールとピッチの図は、傾きを ' + EX + ' 倍に誇張しています。</p></div>';
+  }
+
+  /* 位置の同期 */
+  function updateScrub() {
+    $('scrub').value = scrub;
+    updateCross('speed', ctxSpeed); updateCross('delta', ctxDelta); updateMapCar(); renderState();
+    const d = $('ggdot'), sel = resOf(P.sel);
+    if (d && ctxGG) { d.setAttribute('cx', ctxGG.cx - sel.sim.ay[scrub] / G * ctxGG.k); d.setAttribute('cy', ctxGG.cy - sel.sim.ax[scrub] / G * ctxGG.k); }
+  }
+  function setScrub(i, user) { scrub = clamp(i, 0, tr.N - 1); if (user) userScrub = true; updateScrub(); }
+
+  function renderAll() {
+    $('scrub').max = tr.N - 1;
+    renderVerdict(); renderLegend(); renderTable(); renderMap(); renderSpeed(); renderDelta(); renderGG(); renderSweep(); updateScrub();
+  }
+  let sweepT = 0, pending = false;
+  function update() { compute(); renderAll(); save(); clearTimeout(sweepT); sweepT = setTimeout(computeSweep, 140); }
+  function schedule() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; update(); }); }
+  function selectLine(id) { P.sel = id; if (!userScrub) scrub = resOf(id).sim.iMin; renderAll(); save(); }
+
+  /* イベント */
+  function bind() {
+    $('controls').addEventListener('submit', e => e.preventDefault());
+    $('controls').addEventListener('input', e => {
+      const t = e.target;
+      if (t.type === 'range' && t.dataset.g) {
+        const g = groupOf(t.dataset.g); P[g][t.dataset.k] = +t.value;
+        if (g === 'car') P.preset = 'custom'; if (g === 'corner') P.cornerPreset = 'custom';
+        if (g !== 'my') userScrub = false;
+        syncControls(); schedule();
+      }
+    });
+    $('f-preset').addEventListener('change', e => { const k = e.target.value; P.preset = k; if (CAR_PRESETS[k]) P.car = Object.assign({}, CAR_PRESETS[k].v); userScrub = false; syncControls(); schedule(); });
+    $('f-drive').addEventListener('change', e => { P.car.drive = e.target.value; P.preset = 'custom'; syncControls(); schedule(); });
+    $('cornerseg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; P.cornerPreset = b.dataset.c; P.corner = Object.assign({}, CORNER_PRESETS[b.dataset.c].v); userScrub = false; syncControls(); schedule(); });
+    $('autobtn').addEventListener('click', () => { autoSearch(); P.sel = 'my'; userScrub = false; syncControls(); update(); });
+    $('legend').addEventListener('click', e => { const b = e.target.closest('button'); if (b) selectLine(b.dataset.sel); });
+    $('table').addEventListener('change', e => { if (e.target.name === 'sel') selectLine(e.target.value); });
+    $('scrub').addEventListener('input', e => setScrub(+e.target.value, true));
+    bindPlot('speed', () => ctxSpeed); bindPlot('delta', () => ctxDelta);
+    const mapMove = e => {
+      const svg = $('map').querySelector('svg'); if (!svg || !ctxMap) return;
+      const r = svg.getBoundingClientRect(), vb = ctxMap.vb, sc = Math.min(r.width / vb[2], r.height / vb[3]);
+      const mx = vb[0] + vb[2] / 2 + (e.clientX - r.left - r.width / 2) / sc, my = -(vb[1] + vb[3] / 2 + (e.clientY - r.top - r.height / 2) / sc);
+      const sel = resOf(P.sel); let bi = -1, bd = 1e9;
+      for (let i = ctxMap.i0; i <= ctxMap.i1; i++) { const d = Math.hypot(sel.line.px[i] - mx, sel.line.py[i] - my); if (d < bd) { bd = d; bi = i; } }
+      if (bi >= 0 && bd < 30 / sc) setScrub(bi, true);
+    };
+    $('map').addEventListener('pointermove', mapMove); $('map').addEventListener('pointerdown', mapMove);
+    $('sweep').addEventListener('click', e => { const c = e.target.closest('.swp'); if (!c) return; P.my.apex = +c.dataset.a; P.sel = 'my'; syncControls(); update(); });
+    let rT = 0, lastW = $('main').clientWidth;
+    new ResizeObserver(() => { const w = $('main').clientWidth; if (w === lastW) return; lastW = w; clearTimeout(rT); rT = setTimeout(() => { if (RES.length) renderAll(); }, 120); }).observe($('main'));
+  }
+
+  buildControls();
+  if (!restored) autoSearch();
+  syncControls(); bind(); update();
+})();
+</script>
+
+</body></html>
