@@ -199,3 +199,14 @@ test('onProgress が最後に (total,total) で呼ばれ、結果は同期版と
   const none = await searchFastest(Object.assign({}, tr, { corners: [] }), car, V_ENTRY);
   assert.deepEqual(none.params, []);
 });
+
+test('完全な直線 200 m（コーナー0）でも lineOIO の n に NaN が無く、タイムが有限', () => {
+  /* 曲率がほぼ0でピンも無いと連立方程式が特異になり、n が NaN になっていた */
+  const tr = buildTrackFromPath(toLatLngs(course([['s', 200]])), { W: 6, mode: 'full' });
+  assert.ok(!tr.error, 'error: ' + tr.error);
+  assert.equal(tr.corners.length, 0);
+  const line = lineOIO(tr);
+  for (let i = 0; i < tr.N; i++) assert.ok(Number.isFinite(line.n[i]), 'n[' + i + ']=' + line.n[i]);
+  const r = runLineN(tr, deriveCar(GRB), V_ENTRY, line);
+  assert.ok(Number.isFinite(r.sim.time) && r.sim.time > 0, 'time=' + r.sim.time);
+});

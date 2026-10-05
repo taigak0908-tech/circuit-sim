@@ -28,6 +28,9 @@ function solveLineN(tr, pins) {
       else if (act[i]) { d0[i] += Wp; rhs[i] += Wp * (act[i] > 0 ? bHi : bLo); }
     }
     n = _phys.solvePenta(d0, h1, h2, rhs);
+    /* 完全な直線（曲率ほぼ0）でピンも無いと連立方程式が特異になり、解に NaN/Infinity が出る。
+       その場合は反復を打ち切り、全点を中央線（n=0）にフォールバックする（直線ではラインの差が無いため） */
+    if (!n.every(Number.isFinite)) { n = new Float64Array(N); break; }
     let changed = false;
     for (let i = 0; i < N; i++) {
       if (!isNaN(pin[i])) continue;
