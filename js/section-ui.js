@@ -171,7 +171,9 @@
     R.my = pick(() => lineCustom(tr, S.params));
     if (!fastCurrent()) startFast();
     const f = fastCurrent();
-    R.fast = f && f.res ? f.res : R.my;   // 探索が終わるまでは自分のラインと同じ結果を仮に指す
+    /* 探索が終わるまでは、型ライン（中央・OIO・レイト・インベタ）のうち最も速いものを仮に指す
+       （自分のライン＝レイトの既定値を指すと、探索中に「中央のほうが速い」と出ることがあるため） */
+    R.fast = f && f.res ? f.res : ['center', 'oio', 'late', 'inside'].map(id => R[id]).reduce((a, b) => (b.sim.time < a.sim.time ? b : a));
     S.results = R;
   }
 
@@ -188,7 +190,7 @@
     $('verdict').innerHTML = SR.verdictHtml(SR.verdictInfo(S.results, S.tr));
     if (fastRunning()) {
       const p = document.createElement('p'); p.className = 'sub';
-      p.textContent = '最速を探索中です。いまの値は仮のもの（自分のラインと同じ）で、探索が終わると差し替わります。';
+      p.textContent = '最速を探索中です。いまの値は仮のもの（型ラインで最も速いもの）で、探索が終わると差し替わります。';
       $('verdict').querySelector('.v-text').appendChild(p);
     }
   }

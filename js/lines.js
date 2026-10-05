@@ -87,7 +87,9 @@ function runLineN(tr, car, vEntry, line) { return { line, sim: _phys.simulate(tr
 
 /* コーナーごとのパラメータからピン配列を作る。
    params[c] = {apex:0..1（コーナー内の位置）, inside:0..1（内側への寄せ具合）, hold: m（入口で外側に居続ける距離）}
-   内側 = 左コーナーは bLo 側・右コーナーは bHi 側、外側はその反対。params[c] が無いコーナーはピン無し */
+   内側 = 左コーナーは bLo 側・右コーナーは bHi 側、外側はその反対。params[c] が無いコーナーはピン無し。
+   hold の外側ピンは apex の手前 max(8 m, 幅の2倍) で止める（短いコーナーで外→内の横移動が数 m に詰まり、
+   ラインが急に折れて型ラインが中央より大幅に遅くなっていた）。止める位置が i0 より前になるなら hold ピンは置かない */
 function pinsFromParams(tr, params) {
   const N = tr.N, pins = new Float64Array(N).fill(NaN);
   for (let c = 0; c < tr.corners.length; c++) {
@@ -97,8 +99,9 @@ function pinsFromParams(tr, params) {
     const inner = (left ? tr.bLo : tr.bHi) * p.inside, outer = left ? tr.bHi : tr.bLo;
     const ia = _phys.clamp(Math.round(k.i0 + p.apex * (k.i1 - k.i0)), 0, N - 1);
     if (p.hold > 0) {
-      const iEnd = Math.min(k.i0 + Math.round(p.hold / tr.ds), ia - 2);
-      for (let i = Math.max(k.i0, 0); i <= iEnd; i++) pins[i] = outer;
+      const gap = Math.round(Math.max(8, 2 * (tr.W || 0)) / tr.ds);
+      const iEnd = Math.min(k.i0 + Math.round(p.hold / tr.ds), ia - gap);
+      for (let i = Math.max(k.i0, 0); i <= iEnd; i++) pins[i] = outer;   // iEnd < i0（範囲が逆転）なら1つも置かない
     }
     pins[ia] = inner;
   }

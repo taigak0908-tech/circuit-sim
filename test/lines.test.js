@@ -129,7 +129,7 @@ test('cornerStats の tCorner の合計 ≤ sim.time（各コーナーの vMin �
   assert.ok(sum <= r.sim.time + 1e-9, 'sum ' + sum + ' / time ' + r.sim.time);
 });
 
-test('late の apex ピンは i0+0.65*(i1-i0) に内側いっぱい、入口 i0..i0+10m は外側', () => {
+test('late の apex ピンは i0+0.65*(i1-i0) に内側いっぱい、入口 i0..i0+10m は外側（apex の手前 max(8m, 2W) は空ける）', () => {
   const tr = sTrack({ W: 6, mode: 'full' });
   const pins = pinsFromParams(tr, defaultParams(tr, 'late'));
   assert.equal(pins.length, tr.N);
@@ -137,7 +137,7 @@ test('late の apex ピンは i0+0.65*(i1-i0) に内側いっぱい、入口 i0.
     const ia = Math.round(c.i0 + 0.65 * (c.i1 - c.i0));
     const inner = innerOf(tr, c), outer = c.dir === 'L' ? tr.bHi : tr.bLo;
     assert.ok(Math.abs(pins[ia] - inner) < 1e-9, 'apex corner ' + c.no + ' pin=' + pins[ia]);
-    const iEnd = Math.min(c.i0 + Math.round(10 / tr.ds), ia - 2);
+    const iEnd = Math.min(c.i0 + Math.round(10 / tr.ds), ia - Math.round(Math.max(8, 2 * tr.W) / tr.ds));
     for (let i = c.i0; i <= iEnd; i++) assert.ok(Math.abs(pins[i] - outer) < 1e-9, 'hold corner ' + c.no + ' i=' + i);
   }
   /* 自車線（bHi=0）では右コーナーの内側は 0（中心） */
@@ -149,6 +149,26 @@ test('late の apex ピンは i0+0.65*(i1-i0) に内側いっぱい、入口 i0.
   const lc = lineCustom(tr, defaultParams(tr, 'late'));
   assert.equal(lc.n.length, tr.N);
   inRange(tr, lc.n, 'custom');
+});
+
+test('長さ 20 m のコーナーに hold=30 を与えても、外側ピンは apex から 8 点未満の所に無い（最も近い外側ピンは W=6 で 12 点手前、W=3 で 8 点手前）', () => {
+  for (const [W, gap] of [[6, 12], [3, 8]]) {
+    const base = sTrack({ W, mode: 'full' });
+    const k = { no: 1, dir: 'L', i0: 100, i1: 120, s0: 100, s1: 120, rMin: 20, angDeg: 60 };
+    const tr = Object.assign({}, base, { corners: [k] });
+    const p = { apex: 0.65, inside: 1, hold: 30 };
+    const pins = pinsFromParams(tr, [p]);
+    const ia = Math.round(k.i0 + p.apex * (k.i1 - k.i0)), outer = tr.bHi;
+    assert.ok(Math.abs(pins[ia] - tr.bLo) < 1e-9, 'apex');
+    for (let i = ia - 7; i < ia; i++) assert.ok(Number.isNaN(pins[i]), 'W=' + W + ' i=' + i + ' pin=' + pins[i]);
+    /* 入口の外側ピンは apex の gap 点手前まで（それより後ろは置かない） */
+    for (let i = k.i0; i <= ia - gap; i++) assert.ok(Math.abs(pins[i] - outer) < 1e-9, 'W=' + W + ' hold i=' + i);
+    for (let i = ia - gap + 1; i < ia; i++) assert.ok(Number.isNaN(pins[i]), 'W=' + W + ' gap i=' + i);
+  }
+  /* 範囲が逆転する（apex が入口に近すぎる）ときは hold ピンを置かない */
+  const tr = Object.assign({}, sTrack({ W: 6, mode: 'full' }), { corners: [{ no: 1, dir: 'R', i0: 100, i1: 110, s0: 100, s1: 110, rMin: 20, angDeg: 30 }] });
+  const pins = pinsFromParams(tr, [{ apex: 0.5, inside: 1, hold: 30 }]);
+  assert.equal(pins.filter(x => !Number.isNaN(x)).length, 1, 'apex のピンだけ');
 });
 
 test('最速のタイムは 中央/OIO/late/inside のどれより短いか等しい（S字・GRB）', () => {
