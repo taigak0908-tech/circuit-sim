@@ -1,6 +1,6 @@
 const { test, assert } = require('./harness');
 const { buildTrackFromPath } = require('../js/track');
-const { trackToLatLngs, fetchRoute, fetchOsmWidth, osmWidthFromElements } = require('../js/map');
+const { trackToLatLngs, fetchRoute, fetchOsmWidth, osmWidthFromElements, cornerLabel, cornerMapLabel, CORNER_FULL_ZOOM } = require('../js/map');
 
 const haversine = (a, b) => {
   const R = 6371000, rad = Math.PI / 180;
@@ -98,4 +98,14 @@ test('fetchOsmWidth: Overpass に data= で POST し、数値を返す／失敗�
   assert.equal(decodeURIComponent(seen.opt.body), 'data=[out:json][timeout:10];way(around:8,36.74,139.5)[highway];out tags;');
   assert.equal(await withFetch(reply(504, undefined), () => fetchOsmWidth(1, 2)), null);
   assert.equal(await withFetch(async () => { throw new Error('net'); }, () => fetchOsmWidth(1, 2)), null);
+});
+
+test('cornerMapLabel: ズーム 16 未満は丸数字だけ、16 以上は全文（重なり対策）', () => {
+  const c = { no: 1, dir: 'R', rMin: 38, angDeg: 90 };
+  assert.equal(CORNER_FULL_ZOOM, 16);
+  assert.equal(cornerMapLabel(c, 15), '①');
+  assert.equal(cornerMapLabel(c, 15.9), '①');
+  assert.equal(cornerMapLabel(c, 16), '①右R38 90°');
+  assert.equal(cornerMapLabel(c, 18), cornerLabel(c, true));
+  assert.equal(cornerMapLabel({ no: 21, dir: 'L', rMin: 9, angDeg: 120 }, 10), '(21)');
 });

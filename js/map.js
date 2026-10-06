@@ -110,6 +110,12 @@ function cornerLabel(c, withAng) {
   return _cornerNo(c.no) + (c.dir === 'L' ? '左' : '右') + 'R' + Math.round(c.rMin) + (withAng ? ' ' + Math.round(c.angDeg) + '°' : '');
 }
 
+/* 地図のズームがこれ未満なら、コーナーのラベルは丸数字だけにする（密集したコーナーで全文が重なるため） */
+const CORNER_FULL_ZOOM = 16;
+
+/* 地図に出すコーナーのラベル。zoom が CORNER_FULL_ZOOM 以上なら全文（①右R38 90°）、未満なら丸数字だけ（①） */
+function cornerMapLabel(c, zoom) { return zoom >= CORNER_FULL_ZOOM ? cornerLabel(c, true) : _cornerNo(c.no); }
+
 /* 地図を作る。el = 地図を入れる要素（またはその id）。戻り値のメソッドで操作する */
 function createMap(el) {
   const map = L.map(el, { zoomControl: true });
@@ -143,15 +149,23 @@ function createMap(el) {
     (m.vias || []).forEach((p, i) => _mk(p, 'pt-via', String(i + 1)).addTo(markerLayer));
     if (m.end) _mk(m.end, 'pt-end', 'G').addTo(markerLayer);
   }
-  function drawCorners(corners, tr) {
+  /* コーナーのラベルを描く。corners/tr は覚えておき、ズームが変わったら（zoomend）同じ内容でラベルだけ作り直す */
+  let cornersShown = null, cornersTr = null;
+  function _renderCorners() {
     cornerLayer.clearLayers();
-    (corners || []).forEach(c => {
+    if (!cornersShown || !cornersTr) return;
+    const tr = cornersTr, z = map.getZoom();
+    cornersShown.forEach(c => {
       const mid = Math.round((c.i0 + c.i1) / 2);
       const p = _xyToLatLng(tr.cx[mid], tr.cy[mid], tr.origin);
-      const text = cornerLabel(c, true);
+      const text = cornerMapLabel(c, z);
       L.marker([p.lat, p.lng], { interactive: false, keyboard: false, zIndexOffset: 500,
         icon: L.divIcon({ className: 'corner-wrap', html: '<span class="corner-lbl">' + text + '</span>', iconSize: [0, 0] }) }).addTo(cornerLayer);
     });
+  }
+  function drawCorners(corners, tr) {
+    cornersShown = corners && corners.length ? corners : null; cornersTr = tr || null;   // 空・null で前のコーナーを消す
+    _renderCorners();
   }
   function drawLines(lines) {
     linesLayer.clearLayers();
@@ -189,7 +203,8 @@ function createMap(el) {
   restoreView();
   setBase('osm');
   map.on('moveend', saveView);
+  map.on('zoomend', () => { if (cornersShown) _renderCorners(); });   // ズームでラベルの詳しさを切り替える
   return { map, setBase, setRoute, setMarkers, drawCorners, drawLines, clearLines, setCar, measureLine, onMapClick, fitRoute, saveView, restoreView };
 }
 
-if (typeof module !== 'undefined') module.exports = { fetchRoute, fetchOsmWidth, osmWidthFromElements, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo };
+if (typeof module !== 'undefined') module.exports = { fetchRoute, fetchOsmWidth, osmWidthFromElements, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo, cornerMapLabel, CORNER_FULL_ZOOM };
