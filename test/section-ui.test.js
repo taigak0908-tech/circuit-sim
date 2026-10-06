@@ -40,6 +40,13 @@ test('判定: 最速と中央の差・最も縮んだコーナーを文にする
   assert.ok(t.includes('半径 5〜200 m・幅 3〜16 m・入口速度 20〜220 km/h'));
 });
 
+test('凡例: 末尾に型ラインの説明（参考値・基準は最速と自分のライン）が入り、チェックボックス・ボタンは系列ぶん', () => {
+  const h = SR.legendHtml();
+  assert.ok(h.includes('class="lg-note"') && h.includes('参考値です') && h.includes('「最速」と「自分のライン」を基準'));
+  assert.equal((h.match(/data-vis=/g) || []).length, SR.SERIES.length);
+  assert.equal((h.match(/data-sel=/g) || []).length, SR.SERIES.length);
+});
+
 test('引き継ぎ URL: R・角度（5° 刻み）・幅・入口速度（km/h 整数）を index.html へ渡す', () => {
   const k = { rMin: 21.6, angDeg: 87.4 };
   assert.equal(SR.cornerLinkUrl(k, 100 / 3.6, 6), 'index.html?R=22&angDeg=85&W=6&vIn=100');

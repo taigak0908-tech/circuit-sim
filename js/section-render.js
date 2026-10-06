@@ -55,10 +55,13 @@ const SectionRender = (function () {
   }
 
   /* ---------- 凡例（チェックボックス＋選択ボタン） ---------- */
+  /* 凡例の末尾の説明。型ラインは計算の参考値で、判定カードの基準は「最速」 */
+  const LEGEND_NOTE = '型ライン（全アウトインアウト・全レイト・全インベタ）は全コーナーに同じ型を当てた参考値です。峠では「最速」と「自分のライン」を基準にしてください';
   function legendHtml() {
     return SERIES.map(s =>
       '<span class="lg"><input type="checkbox" data-vis="' + s.id + '" aria-label="' + s.name + 'を表示">' +
-      '<button type="button" data-sel="' + s.id + '" aria-pressed="false"><span class="key" style="background:' + s.color + '"></span>' + s.name + '</button></span>').join('');
+      '<button type="button" data-sel="' + s.id + '" aria-pressed="false"><span class="key" style="background:' + s.color + '"></span>' + s.name + '</button></span>').join('') +
+      '<span class="lg-note">' + LEGEND_NOTE + '</span>';
   }
 
   /* ---------- 1コーナー比較（index.html）への引き継ぎ ----------
