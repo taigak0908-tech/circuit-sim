@@ -29,7 +29,10 @@
 経路が3回続けて取れないときは「手動で道をなぞる」で、道の上を数点クリックして線を引ける。
 
 ## 動かし方
-- 元の場所（1コーナー版のアーティファクト）: https://claude.ai/artifact/Mo3douFiqpAVbdmAyWufUR （区間モード `section.html` はまだ公開していない）
+- 公開URL（GitHub Pages、2026-10-06 公開）:
+  - 1コーナー比較: https://taigak0908-tech.github.io/circuit-sim/
+  - 区間モード: https://taigak0908-tech.github.io/circuit-sim/section.html
+- 元の場所（1コーナー版のアーティファクト）: https://claude.ai/artifact/Mo3douFiqpAVbdmAyWufUR
 - ローカル:
   - `index.html` はファイルをそのままブラウザで開ける
   - `section.html` と `test.html` は **http で開く**。地図タイル・経路 API（OSRM）・道幅 API（Overpass）への通信や、テストファイルの取得が `file://` だと動かないため。例:
