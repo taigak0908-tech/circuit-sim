@@ -35,7 +35,6 @@
     latlngs: null, tr: null,
     trFrom: null,        // S.tr を作ったときの S.latlngs（同じ配列なら経路は変わっていない）
     W: 6, laneMode: 'full', vIn: 60,
-    wTouched: false,     // 幅を自分で決めたか（スライダー・計測・保存の読み込み）。false の間だけ OSM タグの幅を初期値に使う
     measureP: null,      // 幅の計測の1点目
     preset: 'grb', carP: Object.assign({}, CAR_PRESETS.grb.v), car: null,   // carP = 車のパラメータ、car = deriveCar の結果
     params: [],          // 自分のライン（コーナーごと {apex,inside,hold}）。tr ができるたび既定値に戻す
@@ -72,6 +71,12 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'btn'; b.id = 'btn-retry'; b.textContent = '再試行';
       b.addEventListener('click', rebuildRoute);
+      el.appendChild(b);
+    }
+    if (opt && opt.action) {   // 任意のボタン（例: 地図データの幅の「適用」）
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn'; b.id = opt.action.id; b.textContent = opt.action.text;
+      b.addEventListener('click', opt.action.fn);
       el.appendChild(b);
     }
     el.hidden = false;
@@ -403,7 +408,7 @@
     rebuildTrack(true);   // 地図を経路全体に合わせる
     if (!S.tr) return false;
     applyPendingRestore();
-    if (!S.wTouched) applyOsmWidth(seq);
+    offerOsmWidth(seq);
     return true;
   }
 
@@ -426,15 +431,21 @@
     rebuildTrack(false);
     return v;
   }
-  /* OSM タグの幅を、区間の中点で1回だけ取って初期値にする（自分で幅を決めていたら使わない） */
-  async function applyOsmWidth(seq) {
-    const tr = S.tr, mid = trackToLatLngs(tr)[tr.N >> 1];
+  /* OSM タグの幅を、区間の中点で1回だけ取り、あれば「適用」ボタンつきで知らせる。自動では入れない（押したときだけ setWidth）。
+     ほぼ直線・取れない・古い応答・区間が変わった・いまの幅と同じ、なら何も出さない */
+  async function offerOsmWidth(seq) {
+    const tr = S.tr;
+    if (!tr.corners.length) return;   // ほぼ直線なら「ほぼ直線です」の表示を残す
+    const mid = trackToLatLngs(tr)[tr.N >> 1];
     const w = await fetchOsmWidth(mid.lat, mid.lng);
-    /* 取れない・古い応答・幅をもう触った・区間が変わった、に加えて自分のラインを調整済みなら使わない。
-       （幅だけ変えても rebuildTrack は自分のラインを保つが、調整した幅の前提が黙って変わらないように使わない） */
-    if (w == null || seq !== S.seq || S.wTouched || S.paramsEdited || S.tr !== tr) return;
-    const v = setWidth(w);
-    showMsg('地図データの幅 ' + v.toFixed(1) + ' m を初期値にしました', { info: true });
+    if (w == null || seq !== S.seq || S.tr !== tr) return;
+    const v = Math.min(12, Math.max(3, Math.round(w * 10) / 10));   // setWidth と同じ丸め
+    if (v === S.W) return;
+    showMsg('地図データの幅 ' + v.toFixed(1) + ' m があります（いまは ' + S.W.toFixed(1) + ' m）', { info: true, action: { id: 'btn-apply-w', text: '適用', fn: () => {
+      if (seq !== S.seq || S.tr !== tr) { showMsg(null); return; }   // 経路や区間が変わっていたら古い値は使わない
+      const x = setWidth(v);
+      showMsg('幅 ' + x.toFixed(1) + ' m を適用しました', { info: true });
+    } } });
   }
 
   function useManualRoute() {
@@ -446,7 +457,7 @@
   function clearAll() {
     ++S.seq; S.pendingRestore = null;
     S.points = { start: null, end: null, vias: [] };
-    S.manualPts = []; S.manual = false; S.wTouched = false;
+    S.manualPts = []; S.manual = false;
     clearRouteView(); api.setMarkers(null); showMsg(null); setMode(null);
   }
 
@@ -457,7 +468,7 @@
     if (m === 'measure') {
       if (!S.measureP) { S.measureP = p; api.measureLine(p, null); return; }
       const d = api.map.distance(S.measureP, p);
-      S.wTouched = true; setMode(null);
+      setMode(null);
       const v = setWidth(d);
       showMsg(Math.abs(v - d) > 0.05 ? '測った幅 ' + d.toFixed(1) + ' m は範囲外のため ' + v.toFixed(1) + ' m にしました' : '幅 ' + v.toFixed(1) + ' m を入れました', { info: true });
       return;
@@ -503,7 +514,7 @@
   $('base-aerial').addEventListener('click', () => setBase('aerial'));
 
   $('f-W').addEventListener('input', e => {
-    S.W = parseFloat(e.target.value); $('o-W').textContent = S.W.toFixed(1); S.wTouched = true;
+    S.W = parseFloat(e.target.value); $('o-W').textContent = S.W.toFixed(1);
     rebuildTrack(false);
   });
   function setLaneMode(m) {
@@ -612,9 +623,8 @@
   async function openSaved(id) {
     const d = sectionStore.getSection(id);
     if (!d || !d.points) return;
-    clearAll();   // 点・経路・結果を片付けて、幅の「触った」印も戻す
+    clearAll();   // 点・経路・結果を片付ける
     showMsg('保存した区間を読み込み中…', { info: true });   // 経路が描けたら rebuildTrack が消す（探索の進み具合は進捗バー）
-    S.wTouched = true;   // 保存した幅を使う（OSM タグで上書きしない）
     S.W = Math.min(12, Math.max(3, +d.W || 6)); $('f-W').value = String(S.W); $('o-W').textContent = S.W.toFixed(1);
     S.laneMode = d.laneMode === 'lane' ? 'lane' : 'full';
     $('mode-full').setAttribute('aria-pressed', String(S.laneMode === 'full')); $('mode-lane').setAttribute('aria-pressed', String(S.laneMode === 'lane'));
