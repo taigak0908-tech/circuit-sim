@@ -432,13 +432,14 @@
     return v;
   }
   /* OSM タグの幅を、区間の中点で1回だけ取り、あれば「適用」ボタンつきで知らせる。自動では入れない（押したときだけ setWidth）。
-     ほぼ直線・取れない・古い応答・区間が変わった・いまの幅と同じ、なら何も出さない */
+     ほぼ直線・取れない・古い応答・区間が変わった・いまの幅と同じ・別のメッセージが出ている、なら何も出さない */
   async function offerOsmWidth(seq) {
     const tr = S.tr;
     if (!tr.corners.length) return;   // ほぼ直線なら「ほぼ直線です」の表示を残す
     const mid = trackToLatLngs(tr)[tr.N >> 1];
     const w = await fetchOsmWidth(mid.lat, mid.lng);
     if (w == null || seq !== S.seq || S.tr !== tr) return;
+    if (!$('msg').hidden) return;   // 別のメッセージ（「道路データが変わっています」など）が出ている間は上書きしない
     const v = Math.min(12, Math.max(3, Math.round(w * 10) / 10));   // setWidth と同じ丸め
     if (v === S.W) return;
     showMsg('地図データの幅 ' + v.toFixed(1) + ' m があります（いまは ' + S.W.toFixed(1) + ' m）', { info: true, action: { id: 'btn-apply-w', text: '適用', fn: () => {
