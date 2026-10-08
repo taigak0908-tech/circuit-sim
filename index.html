@@ -1,150 +1,71 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>コーナーライン比較シム</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+<script src="js/header.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:ital,wght@0,500;0,700;1,700;1,800&family=BIZ+UDPGothic:wght@400;700&display=swap">
+<link rel="stylesheet" href="css/theme.css">
 <style>
-/* レイアウト: 左に操作パネル、右は「結論 → コース図と車両状態 → 比較表 → グラフ」の順に読む計測シート */
-:root{
-  --plane:#f4f4f1; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#77756f;
-  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.13);
-  --asphalt:#d6d5ce; --curb:#d03b3b; --curbw:#ffffff;
-  --accent:#6a32c9; --accent-ink:#ffffff; --accent-wash:rgba(106,50,201,.10); --crit:#c93535;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
-  --font-body:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
-  --font-data:"Saira Semi Condensed","Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",system-ui,sans-serif;
-}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#9b9992;
-  --grid:#2c2c2a; --axis:#4a4a46; --border:rgba(255,255,255,.14);
-  --asphalt:#34342f; --curb:#e05252; --curbw:#eeede7;
-  --accent:#b594ff; --accent-ink:#160f26; --accent-wash:rgba(181,148,255,.16); --crit:#e66767;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; color-scheme:dark } }
-:root[data-theme="dark"]{
-  --plane:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#9b9992;
-  --grid:#2c2c2a; --axis:#4a4a46; --border:rgba(255,255,255,.14);
-  --asphalt:#34342f; --curb:#e05252; --curbw:#eeede7;
-  --accent:#b594ff; --accent-ink:#160f26; --accent-wash:rgba(181,148,255,.16); --crit:#e66767;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; color-scheme:dark }
+/* 1コーナー比較の固有。共通の色・書体・ボタンは css/theme.css */
+/* レイアウト: 左に操作パネル、右は「判定 → コース図と車両状態 → 比較表 → グラフ」の順に読む */
+.wrap{max-width:1360px;margin-inline:auto;padding:16px clamp(16px,3vw,32px) 56px;display:grid;gap:12px}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}
+.main{display:grid;gap:12px;min-width:0}
+.controls{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100vh - 24px);overflow:auto;padding-right:2px}
 
-*{box-sizing:border-box}
-body{margin:0;background:var(--plane);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.65}
-.wrap{max-width:1360px;margin-inline:auto;padding-inline:clamp(16px,3vw,32px);padding-block:22px 56px;display:grid;gap:22px}
-h1,h2,h3,p{margin:0}
-h1{font-size:clamp(22px,3vw,30px);font-weight:900;letter-spacing:.01em;line-height:1.25;text-wrap:balance}
-.lede{color:var(--ink2);max-width:62ch}
-h2{font-size:15px;font-weight:700;line-height:1.4;text-wrap:balance}
-.sub{color:var(--muted);font-size:12px}
-.num{font-family:var(--font-data);font-variant-numeric:tabular-nums}
-.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:26px;align-items:start}
-.main{display:grid;gap:22px;min-width:0}
-
-/* 操作パネル */
-.controls{display:grid;gap:4px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100vh - 24px);overflow:auto;padding-right:6px}
-.controls details{border-top:1px solid var(--border);padding-block:10px}
-.controls details:last-of-type{border-bottom:1px solid var(--border)}
-.controls summary{cursor:pointer;font-weight:700;font-size:14px;list-style-position:inside;padding-block:2px}
-.controls summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, .rowsel input:focus-visible + .key{outline:2px solid var(--accent);outline-offset:2px}
-.grp{display:grid;gap:12px;padding-top:10px}
-.fld{display:grid;gap:2px}
-.fld-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.fld label{font-size:12.5px;color:var(--ink2)}
-.fld output{font-family:var(--font-data);font-variant-numeric:tabular-nums;font-weight:600;font-size:14px;white-space:nowrap}
-.fld input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:22px}
-.fld select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;width:100%}
-.hint{font-size:11.5px;color:var(--muted);line-height:1.5}
-.adv{border:0 !important;padding:0 !important}
-.adv summary{font-weight:500;font-size:12.5px;color:var(--ink2)}
-.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
-.seg button, .btn{font:inherit;font-size:12.5px;border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:6px;padding:6px 4px;cursor:pointer}
-.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
-.btn{padding:8px 12px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.btn:hover, .seg button:hover{filter:brightness(1.06)}
-.tabs{display:flex;gap:4px}
-.tabs a{font-size:13px;font-weight:700;color:var(--ink2);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:5px 16px;background:var(--surface)}
-.tabs a[aria-current=page]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.tabs a:hover{filter:brightness(1.06)}
-.tabs a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-
-/* 結論 */
-.verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 32px;align-items:center;border-top:3px solid var(--ink);padding-top:14px}
-.eyebrow{font-size:12px;color:var(--muted);letter-spacing:.08em}
-.v-name{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
-.v-time{font-family:var(--font-data);font-weight:700;font-size:clamp(44px,6vw,60px);line-height:1}
-.v-time small{font-family:var(--font-body);font-size:15px;font-weight:500;color:var(--ink2);margin-left:4px}
-.v-text{display:grid;gap:6px;color:var(--ink2);max-width:66ch}
-.v-text strong{color:var(--ink)}
-
-.key{display:inline-block;width:14px;height:4px;border-radius:2px;flex:none}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;display:grid;gap:10px;min-width:0}
-.card-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 12px}
-.two{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:16px;align-items:start}
+.verdict{display:grid;gap:4px;color:var(--text);font-size:15px;max-width:80ch}
+.verdict strong{color:var(--strong)}
+.two{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:12px;align-items:start}
 .two.even{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
 
-.legend{display:flex;flex-wrap:wrap;gap:6px}
-.legend button{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;color:var(--ink2);background:transparent;border:1px solid var(--border);border-radius:999px;padding:3px 10px;cursor:pointer}
-.legend button[aria-pressed=true]{color:var(--ink);font-weight:700;border-color:var(--ink);background:var(--plane)}
-
-#map{height:380px;position:relative;touch-action:pan-y}
-#map svg, .plot svg{display:block;width:100%;height:100%}
-.plot{position:relative;touch-action:pan-y}
-.tip{position:absolute;top:8px;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:12px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.14);white-space:nowrap;z-index:2}
-.tip b{font-weight:700}
-.tip .row{display:flex;align-items:center;gap:6px}
-.tip .row span.v{margin-left:auto;padding-left:12px;font-family:var(--font-data);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
-svg text{font-family:var(--font-data);font-size:11px;fill:var(--muted)}
-svg text.jp{font-family:var(--font-body)}
-svg text.ink{fill:var(--ink2)}
-svg text.strong{fill:var(--ink);font-weight:700}
-.scrubrow{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;font-size:12px;color:var(--ink2)}
-.scrubrow input{width:100%;accent-color:var(--accent);margin:0}
-
-/* 車両状態 */
-.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.stat .l{font-size:11.5px;color:var(--muted)}
-.stat .v{font-family:var(--font-data);font-weight:700;font-size:24px;line-height:1.1}
-.stat .v small{font-size:12px;font-weight:500;color:var(--ink2);margin-left:2px}
-.meter{display:grid;grid-template-columns:5.5em minmax(0,1fr) 5.2em;gap:8px;align-items:center;font-size:12px;color:var(--ink2)}
-.meter .track{height:8px;border-radius:4px;background:color-mix(in srgb,var(--s1) 18%,var(--surface));overflow:hidden}
-.meter .fill{height:100%;background:var(--s1);border-radius:4px}
-.meter .fill.lim{background:var(--crit)}
-.meter .val{font-family:var(--font-data);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);text-align:right}
+#map{height:380px;position:relative;touch-action:pan-y;background:var(--ground);border-radius:4px}
+#map svg{display:block;width:100%;height:100%}
+.scrubrow{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;font-size:13px;color:var(--text)}
+.scrubrow input{width:100%;margin:0}
 
 /* 比較表 */
-.tablewrap{overflow-x:auto}
-table{border-collapse:collapse;width:100%;min-width:860px;font-size:13px}
-th{font-weight:500;font-size:11.5px;color:var(--muted);text-align:right;padding:4px 10px;border-bottom:1px solid var(--axis);white-space:nowrap;vertical-align:bottom}
-th:first-child, td:first-child{text-align:left;padding-left:0}
-td{padding:8px 10px;border-bottom:1px solid var(--grid);text-align:right;font-family:var(--font-data);font-variant-numeric:tabular-nums;white-space:nowrap}
-td:first-child{font-family:var(--font-body)}
-tr.sel td{background:var(--plane)}
-tr.sel td:first-child{font-weight:700}
+.table-main{min-width:860px}
+tr.sel td{background:var(--ground)}
+tr.sel td:first-child{font-weight:700;color:var(--strong)}
 .rowsel{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
 .rowsel input{position:absolute;opacity:0;width:1px;height:1px}
-.tag{font-size:10.5px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 5px;margin-left:6px;font-weight:500}
-.pill{display:inline-block;font-family:var(--font-body);font-size:10.5px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-radius:4px;padding:0 6px;margin-right:6px}
-td.t{font-weight:700;font-size:15px}
-
-.notes{color:var(--ink2);font-size:12.5px;display:grid;gap:6px;max-width:80ch}
-.notes ul{margin:0;padding-left:1.2em;display:grid;gap:3px}
+.rowsel input:focus-visible + .key{outline:2px solid var(--blue);outline-offset:2px}
+.tag{font-size:11px;color:var(--weak);border:1px solid var(--line-type);padding:0 5px;margin-left:6px}
+td.t{font-size:15px}
 
 @media (max-width:980px){
   .layout{grid-template-columns:minmax(0,1fr)}
   .controls{position:static;max-height:none;overflow:visible;padding-right:0}
   .two, .two.even{grid-template-columns:minmax(0,1fr)}
+  .scrubrow input{height:44px}
 }
 @media (max-width:560px){
-  .verdict{grid-template-columns:minmax(0,1fr)}
+  .wrap{padding-inline:16px}
   #map{height:300px}
   .card{padding:12px}
 }
 </style>
+</head>
+<body>
+<header class="hd" id="hd">
+  <div class="hd-in">
+    <div class="hd-id">
+      <h1 class="hd-title">コーナーライン比較シム</h1>
+      <nav class="tabs" aria-label="モード切替"><a href="index.html" aria-current="page">1コーナー</a><a href="section.html">区間</a></nav>
+    </div>
+    <p class="hd-lede">コーナー1つを5通りのラインで走らせ、荷重移動を含めてタイムを比べます。</p>
+    <div class="hd-end">
+      <div class="theme" role="group" aria-label="画面の明るさ"><button type="button" id="theme-day" aria-pressed="false">昼</button><button type="button" id="theme-night" aria-pressed="false">夜</button></div>
+      <div class="plate" id="plate"></div>
+    </div>
+  </div>
+</header>
 
 <div class="wrap">
-  <header style="display:grid;gap:6px">
-    <nav class="tabs" aria-label="モード切替"><a href="index.html" aria-current="page">1コーナー</a><a href="section.html">区間</a></nav>
-    <h1>コーナーライン比較シム</h1>
-    <p class="lede">コーナー1つを5通りのラインで走らせ、荷重移動を含めてボトム速度・立ち上がり速度・区間タイムの差を計算します。左の数値を動かすと、その場で全部計算し直します。</p>
-  </header>
-
   <div class="layout">
     <form class="controls" id="controls" autocomplete="off">
       <details id="d-car">
@@ -184,7 +105,7 @@ td.t{font-weight:700;font-size:15px}
           <div id="map"></div>
         </section>
         <section class="card" id="statecard">
-          <div class="card-head"><h2>車両状態（荷重と姿勢）</h2><span class="sub" id="statepos"></span></div>
+          <div class="card-head"><h2>荷重と姿勢</h2><span class="sub" id="statepos"></span></div>
           <div id="state"></div>
         </section>
       </div>
@@ -197,14 +118,14 @@ td.t{font-weight:700;font-size:15px}
       <section class="card">
         <div class="card-head"><h2>速度（km/h）</h2><span class="sub">横軸はコーナー入口を 0 m としたコース上の位置</span></div>
         <div class="plot" id="speed" style="height:260px"></div>
-        <div class="card-head" style="margin-top:6px"><h2>基準ラインに対するタイム差の積み上がり（秒）</h2><span class="sub">線が下がる区間で基準より速く走れています</span></div>
+        <div class="card-head" style="margin-top:6px"><h2>基準ラインとのタイム差（秒）</h2><span class="sub">線が下がる区間で基準より速く走れています</span></div>
         <div class="plot" id="delta" style="height:190px"></div>
         <div class="scrubrow"><label for="scrub">位置を動かす</label><input type="range" id="scrub" min="0" max="100" step="1" value="0"></div>
       </section>
 
       <div class="two even">
         <section class="card">
-          <div class="card-head"><h2>エイペックス位置を変えたときの区間タイム（秒）</h2><span class="sub">マイラインのほかの設定はそのまま。点を押すとその位置にします</span></div>
+          <div class="card-head"><h2>エイペックス位置ごとの区間タイム（秒）</h2><span class="sub">マイラインのほかの設定はそのまま。点を押すとその位置にします</span></div>
           <div class="plot" id="sweep" style="height:230px"></div>
         </section>
         <section class="card">
@@ -337,13 +258,19 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
   const sgn = (x, d) => (x > 0 ? '+' : x < 0 ? MINUS : '±') + Math.abs(x).toFixed(d);
   const LS_KEY = 'cornerline-sim-v1';
 
+  /* 色が付くのはマイライン（青）だけ。型ラインは灰色で線種（dash）で見分ける（区間モードと同じ線種: アウト・イン・アウト＝破線、
+     レイト＝点線、インベタ＝一点鎖線。区間モードに無いアーリーは細い実線）。最速のラインは凡例と表の黄色い板で示す */
   const SERIES = [
-    { id: 'oio', name: 'アウト・イン・アウト', color: 'var(--s1)' },
-    { id: 'late', name: 'レイトエイペックス', color: 'var(--s2)' },
-    { id: 'early', name: 'アーリーエイペックス', color: 'var(--s3)' },
-    { id: 'inside', name: 'インベタ', color: 'var(--s4)' },
-    { id: 'my', name: 'マイライン', color: 'var(--s5)' }
+    { id: 'oio', name: 'アウト・イン・アウト', color: 'var(--line-type)', dash: '6 3' },
+    { id: 'late', name: 'レイトエイペックス', color: 'var(--line-type)', dash: '2 3' },
+    { id: 'early', name: 'アーリーエイペックス', color: 'var(--line-type)', dash: '', thin: true },
+    { id: 'inside', name: 'インベタ', color: 'var(--line-type)', dash: '8 3 2 3' },
+    { id: 'my', name: 'マイライン', color: 'var(--blue)', dash: '' }
   ];
+  /* 線の見た目の属性（色・太さ・線種）と、凡例・表の線種の見本（js/section-render.js の同名の関数と同じ） */
+  const strokeOf = (s, w) => 'stroke="' + s.color + '" stroke-width="' + w + '"' + (s.dash ? ' stroke-dasharray="' + s.dash + '" stroke-linecap="butt"' : ' stroke-linecap="round"');
+  const keyHtml = s => '<svg class="key" viewBox="0 0 26 8" aria-hidden="true"><line x1="1" x2="25" y1="4" y2="4" ' + strokeOf(s, s.thin ? 1.5 : 2.5) + '/></svg>';
+  const bestId = () => RES.slice().sort((a, b) => a.sim.time - b.sim.time)[0].id;
   const CAR_PRESETS = {
     grb: { label: 'スバル インプレッサ WRX STI (GRB)', v: { mass: 1550, ps: 308, mu: 1.10, wf: 59, h: 0.50, rs: 56, L: 2.625, tf: 1.530, tr: 1.540, cda: 0.78, cla: 0.10, rollGrad: 3.2, pitchGrad: 1.6, drive: 'AWD' } },
     gr86: { label: 'トヨタ GR86 (ZN8)', v: { mass: 1340, ps: 235, mu: 1.10, wf: 54, h: 0.46, rs: 55, L: 2.575, tf: 1.520, tr: 1.550, cda: 0.60, cla: 0.05, rollGrad: 3.0, pitchGrad: 1.5, drive: 'FR' } },
@@ -509,13 +436,18 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const i = best.sim.iMin, ts = tireState(car, best.sim.v[i], best.sim.ax[i], best.sim.ay[i]);
     const bal = ts.uF - ts.uR > 0.03 ? 'フロントが先に限界に達しています（アンダーステア傾向）' : ts.uR - ts.uF > 0.03 ? 'リアが先に限界に達しています（オーバーステア傾向）' : '前後がほぼ同時に限界に達しています（ニュートラル）';
     txt += '<p>ボトム付近では' + bal + '。</p>';
-    $('verdict').innerHTML = '<div style="display:grid;gap:4px"><div class="eyebrow">この条件での最速</div><div class="v-name"><span class="key" style="background:' + best.color + '"></span>' + best.name + '</div>' +
-      '<div class="v-time">' + best.sim.time.toFixed(3) + '<small>秒</small></div></div><div class="v-text">' + txt + '</div>';
+    $('verdict').innerHTML = txt;
+    /* ヘッダー帯の黄色い板: 最速が基準以外なら基準との差、基準が最速ならそのタイム */
+    const plate = (l, n) => '<span class="plate-l">' + l + '</span><span class="plate-n">' + n + '</span><span class="plate-u">秒</span>';
+    $('plate').innerHTML = best.id === 'oio' || Math.abs(best.sim.time - ref.sim.time) < 0.0005
+      ? plate('最速は基準のアウト・イン・アウト', best.sim.time.toFixed(3))
+      : plate(best.name + '<wbr>が基準より', sgn(best.sim.time - ref.sim.time, 3));
   }
 
   /* 凡例（選択ボタン） */
   function renderLegend() {
-    $('legend').innerHTML = RES.map(r => '<button type="button" data-sel="' + r.id + '" aria-pressed="' + (r.id === P.sel) + '"><span class="key" style="background:' + r.color + '"></span>' + r.name + '</button>').join('');
+    const b = bestId();
+    $('legend').innerHTML = RES.map(r => '<button type="button" data-sel="' + r.id + '" aria-pressed="' + (r.id === P.sel) + '">' + keyHtml(r) + r.name + (r.id === b ? '<span class="pill" style="margin:0 0 0 4px">最速</span>' : '') + '</button>').join('');
   }
 
   /* 比較表 */
@@ -525,14 +457,14 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const rows = RES.map(r => {
       const s = r.sim, d = s.time - ref.sim.time;
       const brake = s.iBrake < 0 ? 'なし' : (relOf(s.iBrake) < 0 ? '入口の ' + (-relOf(s.iBrake)).toFixed(0) + ' m 手前' : '入口の ' + relOf(s.iBrake).toFixed(0) + ' m 先');
-      return '<tr class="' + (r.id === P.sel ? 'sel' : '') + '"><td><label class="rowsel"><input type="radio" name="sel" value="' + r.id + '"' + (r.id === P.sel ? ' checked' : '') + '><span class="key" style="background:' + r.color + '"></span>' + r.name + '</label>' + (r.id === 'oio' ? '<span class="tag">基準</span>' : '') + '</td>' +
+      return '<tr class="' + (r.id === P.sel ? 'sel' : '') + '"><td><label class="rowsel"><input type="radio" name="sel" value="' + r.id + '"' + (r.id === P.sel ? ' checked' : '') + '>' + keyHtml(r) + r.name + '</label>' + (r.id === 'oio' ? '<span class="tag">基準</span>' : '') + '</td>' +
         '<td class="t">' + (Math.abs(s.time - bestT) < 0.0005 ? '<span class="pill">最速</span>' : '') + s.time.toFixed(3) + '</td>' +
-        '<td>' + (r.id === 'oio' ? '—' : sgn(d, 3)) + '</td>' +
+        '<td' + (r.id !== 'oio' && d >= 0.0005 ? ' class="slow"' : '') + '>' + (r.id === 'oio' ? '—' : sgn(d, 3)) + '</td>' +
         '<td>' + (s.vMin * 3.6).toFixed(1) + ' km/h</td><td>' + (s.vExit * 3.6).toFixed(1) + ' km/h</td><td>' + (s.vEnd * 3.6).toFixed(1) + ' km/h</td>' +
-        '<td style="font-family:var(--font-body)">' + brake + '</td>' +
+        '<td style="font-family:var(--font-jp)">' + brake + '</td>' +
         '<td>' + s.tIn.toFixed(3) + '</td><td>' + s.tCorner.toFixed(3) + '</td><td>' + s.tOut.toFixed(3) + '</td><td>' + r.line.length.toFixed(1) + ' m</td></tr>';
     }).join('');
-    $('table').innerHTML = '<table><thead><tr>' + head.map(h => '<th scope="col">' + h + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table>';
+    $('table').innerHTML = '<table class="table-main"><thead><tr>' + head.map(h => '<th scope="col">' + h + '</th>').join('') + '</tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
   /* コース図 */
@@ -548,11 +480,14 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const vb = [x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad], sc = Math.min(cw / vb[2], ch / vb[3]), u = 1 / sc;
     const pts = (o, a, b, rev) => { const p = []; if (!rev) for (let i = a; i <= b; i++) p.push(X(i, o).toFixed(2) + ',' + Y(i, o).toFixed(2)); else for (let i = b; i >= a; i--) p.push(X(i, o).toFixed(2) + ',' + Y(i, o).toFixed(2)); return p.join(' '); };
     let s = '<svg viewBox="' + vb.map(v => v.toFixed(2)).join(' ') + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="コース図と各ラインの軌跡">';
-    s += '<polygon points="' + pts(hw, i0, i1) + ' ' + pts(-hw, i0, i1, true) + '" fill="var(--asphalt)"/>';
-    const curb = (o, a, b) => { a = Math.max(a, i0); b = Math.min(b, i1); if (b <= a) return ''; const p = pts(o, a, b); return '<polyline points="' + p + '" fill="none" stroke="var(--curbw)" stroke-width="1.1"/><polyline points="' + p + '" fill="none" stroke="var(--curb)" stroke-width="1.1" stroke-dasharray="2.4 2.4"/>'; };
-    const k30 = Math.round(30 / tr.ds);
-    s += curb(-hw - 0.55, tr.iA - 2, tr.iB + 2) + curb(hw + 0.55, tr.iB, tr.iB + k30 + 6) + curb(hw + 0.55, tr.iA - k30, tr.iA);
-    const lineOf = (r, selected) => { const p = []; for (let i = i0; i <= i1; i++) p.push(r.line.px[i].toFixed(2) + ',' + (-r.line.py[i]).toFixed(2)); return '<polyline points="' + p.join(' ') + '" fill="none" stroke="' + r.color + '" stroke-width="' + (selected ? 3.2 : 1.8) + '" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"' + (selected ? '' : ' opacity="0.85"') + '/>'; };
+    s += '<polygon points="' + pts(hw, i0, i1) + ' ' + pts(-hw, i0, i1, true) + '" fill="var(--road)"/>';
+    /* 路肩の外側線（白い実線）。峠道には縁石が無いので、道の両端に線だけを引く */
+    const edge = o => '<polyline points="' + pts(o, i0, i1) + '" fill="none" stroke="var(--strong)" stroke-opacity="0.55" stroke-width="1" vector-effect="non-scaling-stroke"/>';
+    s += edge(-hw + 0.25) + edge(hw - 0.25);
+    const lineOf = (r, selected) => { const p = []; for (let i = i0; i <= i1; i++) p.push(r.line.px[i].toFixed(2) + ',' + (-r.line.py[i]).toFixed(2)); const w = selected ? 3.2 : r.thin ? 1.2 : 1.8, pl = '<polyline points="' + p.join(' ') + '" fill="none" ';
+      /* 昼は路面と灰色の線が近い色なので、灰色の線の下に白い縁取りを敷く（夜は --type-case が透明） */
+      return (r.color === 'var(--line-type)' ? pl + 'stroke="var(--type-case)" stroke-width="' + (w + 2) + '" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' : '') +
+        pl + strokeOf(r, w) + ' stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'; };
     RES.filter(r => r.id !== P.sel).forEach(r => { s += lineOf(r, false); });
     const sel = resOf(P.sel); s += lineOf(sel, true);
     const fs = 11.5 * u;
@@ -564,8 +499,8 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
       const ax = sel.line.px[i], ay = -sel.line.py[i], lx = X(i, side * (hw + 16 * u)), ly = Y(i, side * (hw + 16 * u));
       const dx = side * tr.nx[i], dy = -side * tr.ny[i];
       const anchor = dx > 0.4 ? 'start' : dx < -0.4 ? 'end' : 'middle', base = dy > 0.4 ? 'hanging' : dy < -0.4 ? 'auto' : 'middle';
-      return '<line x1="' + ax + '" y1="' + ay + '" x2="' + X(i, side * (hw + 12 * u)) + '" y2="' + Y(i, side * (hw + 12 * u)) + '" stroke="var(--ink2)" stroke-width="1" vector-effect="non-scaling-stroke"/>' +
-        '<circle cx="' + ax + '" cy="' + ay + '" r="' + (4.5 * u) + '" fill="' + (strong ? 'var(--ink)' : 'var(--surface)') + '" stroke="' + (strong ? 'var(--surface)' : 'var(--ink)') + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+      return '<line x1="' + ax + '" y1="' + ay + '" x2="' + X(i, side * (hw + 12 * u)) + '" y2="' + Y(i, side * (hw + 12 * u)) + '" stroke="var(--text)" stroke-width="1" vector-effect="non-scaling-stroke"/>' +
+        '<circle cx="' + ax + '" cy="' + ay + '" r="' + (4.5 * u) + '" fill="' + (strong ? 'var(--strong)' : 'var(--face)') + '" stroke="' + (strong ? 'var(--face)' : 'var(--strong)') + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
         '<text class="jp ' + (strong ? 'strong' : 'ink') + '" x="' + fitX(lx, anchor, text) + '" y="' + ly + '" text-anchor="' + anchor + '" dominant-baseline="' + base + '" style="font-size:' + fs + 'px">' + text + '</text>';
     };
     const dirText = (i, text) => { const lx = X(i, -(hw + 14 * u)), ly = Y(i, -(hw + 14 * u)), dx = -tr.nx[i], dy = tr.ny[i], an = dx > 0.4 ? 'start' : dx < -0.4 ? 'end' : 'middle';
@@ -574,7 +509,7 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     if (sel.sim.iBrake >= 0) s += label(sel.sim.iBrake, 1, 'ブレーキ開始', false);
     s += label(sel.line.iApex, -1, 'エイペックス', false);
     s += label(sel.sim.iMin, 1, 'ボトム ' + (sel.sim.vMin * 3.6).toFixed(1) + ' km/h', true);
-    s += '<g id="mapcar"><rect x="-2.2" y="-0.9" width="4.4" height="1.8" rx="0.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2" vector-effect="non-scaling-stroke"/></g></svg>';
+    s += '<g id="mapcar"><rect x="-2.2" y="-0.9" width="4.4" height="1.8" rx="0.5" fill="var(--strong)" stroke="var(--ground)" stroke-width="2" vector-effect="non-scaling-stroke"/></g></svg>';
     el.innerHTML = s;
     ctxMap = { i0, i1, vb, sc };
   }
@@ -594,17 +529,17 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const w = el.clientWidth || 600, h = el.clientHeight || 240, m = { l: 46, r: 14, t: 12, b: 36 };
     const x = v => m.l + (v - o.xd[0]) / (o.xd[1] - o.xd[0]) * (w - m.l - m.r), y = v => h - m.b - (v - o.yd[0]) / (o.yd[1] - o.yd[0]) * (h - m.t - m.b);
     let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="' + o.aria + '">';
-    (o.bands || []).forEach(b => { s += '<rect x="' + x(b.x0) + '" y="' + m.t + '" width="' + (x(b.x1) - x(b.x0)) + '" height="' + (h - m.t - m.b) + '" fill="var(--ink)" opacity="0.05"/><text class="jp" x="' + (x(b.x0) + x(b.x1)) / 2 + '" y="' + (m.t + 13) + '" text-anchor="middle">' + b.label + '</text>'; });
-    o.yt.forEach(t => { s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="' + (o.zero && t === 0 ? 'var(--axis)' : 'var(--grid)') + '"/><text x="' + (m.l - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + o.yf(t) + '</text>'; });
-    s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + (h - m.b) + '" y2="' + (h - m.b) + '" stroke="var(--axis)"/>';
+    (o.bands || []).forEach(b => { s += '<rect x="' + x(b.x0) + '" y="' + m.t + '" width="' + (x(b.x1) - x(b.x0)) + '" height="' + (h - m.t - m.b) + '" style="fill:var(--yellow);fill-opacity:var(--band-op)"/><text class="jp" x="' + (x(b.x0) + x(b.x1)) / 2 + '" y="' + (m.t + 13) + '" text-anchor="middle">' + b.label + '</text>'; });
+    o.yt.forEach(t => { s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="' + (o.zero && t === 0 ? 'var(--line-type)' : 'var(--rule)') + '"/><text x="' + (m.l - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + o.yf(t) + '</text>'; });
+    s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + (h - m.b) + '" y2="' + (h - m.b) + '" stroke="var(--line-type)"/>';
     o.xt.forEach(t => { s += '<text x="' + x(t) + '" y="' + (h - m.b + 16) + '" text-anchor="middle">' + o.xf(t) + '</text>'; });
     s += '<text class="jp" x="' + (w - m.r) + '" y="' + (h - 4) + '" text-anchor="end">' + o.xtitle + '</text>';
     return { s, x, y, w, h, m };
   }
   const polyOf = (xs, ys, x, y) => { const p = []; for (let i = 0; i < xs.length; i++) p.push(x(xs[i]).toFixed(1) + ',' + y(ys[i]).toFixed(1)); return p.join(' '); };
   function hoverLayer(id, fr) {
-    return '<g id="' + id + '-h"><line id="' + id + '-x" y1="' + fr.m.t + '" y2="' + (fr.h - fr.m.b) + '" stroke="var(--ink2)" stroke-width="1"/>' +
-      RES.map(r => '<circle id="' + id + '-d-' + r.id + '" r="' + (r.id === P.sel ? 5 : 4) + '" fill="' + r.color + '" stroke="var(--surface)" stroke-width="2"/>').join('') + '</g>';
+    return '<g id="' + id + '-h"><line id="' + id + '-x" y1="' + fr.m.t + '" y2="' + (fr.h - fr.m.b) + '" stroke="var(--text)" stroke-width="1"/>' +
+      RES.map(r => '<circle id="' + id + '-d-' + r.id + '" r="' + (r.id === P.sel ? 5 : 4) + '" fill="' + r.color + '" stroke="var(--face)" stroke-width="2"/>').join('') + '</g>';
   }
   function xAxisCfg() {
     const rel = Array.from(tr.st, s => s - P.corner.Ls), xd = [rel[0], rel[rel.length - 1]], st = tickStep(xd[1] - xd[0], Math.max(4, Math.min(10, ($('speed').clientWidth || 600) / 80)));
@@ -616,7 +551,7 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const st = tickStep(hi - lo, 5), yd = [Math.floor(lo / st) * st, Math.ceil(hi / st) * st];
     const fr = frame(el, Object.assign({ yd, yt: tickList(yd[0], yd[1], st), yf: t => t.toFixed(0), aria: '各ラインの速度の推移' }, xa));
     let s = fr.s;
-    const draw = r => { s += '<polyline points="' + polyOf(xa.rel, Array.from(r.sim.v, v => v * 3.6), fr.x, fr.y) + '" fill="none" stroke="' + r.color + '" stroke-width="' + (r.id === P.sel ? 2.6 : 2) + '" stroke-linejoin="round" stroke-linecap="round"/>'; };
+    const draw = r => { s += '<polyline points="' + polyOf(xa.rel, Array.from(r.sim.v, v => v * 3.6), fr.x, fr.y) + '" fill="none" ' + strokeOf(r, r.id === P.sel ? 2.6 : r.thin ? 1.2 : 1.8) + ' stroke-linejoin="round"/>'; };
     RES.filter(r => r.id !== P.sel).forEach(draw); draw(resOf(P.sel));
     el.innerHTML = s + hoverLayer('speed', fr) + '</svg><div class="tip" id="speed-tip" hidden></div>';
     ctxSpeed = { fr, xa, val: (r, i) => r.sim.v[i] * 3.6, fmt: v => v.toFixed(1) + ' km/h' };
@@ -628,7 +563,7 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const st = tickStep(hi - lo, 4), yd = [Math.floor(lo / st - 1e-9) * st, Math.ceil(hi / st + 1e-9) * st], dec = st < 0.1 ? 2 : 1;
     const fr = frame(el, Object.assign({ yd, yt: tickList(yd[0], yd[1], st), yf: t => (Math.abs(t) < 1e-9 ? '0' : sgn(t, dec)), zero: true, aria: '基準ラインに対するタイム差の推移' }, xa, { bands: [{ x0: 0, x1: arcLen(), label: '' }] }));
     let s = fr.s;
-    const draw = r => { s += '<polyline points="' + polyOf(xa.rel, Array.from(r.sim.t, (t, i) => t - ref.sim.t[i]), fr.x, fr.y) + '" fill="none" stroke="' + r.color + '" stroke-width="' + (r.id === P.sel ? 2.6 : 2) + '" stroke-linejoin="round" stroke-linecap="round"/>'; };
+    const draw = r => { s += '<polyline points="' + polyOf(xa.rel, Array.from(r.sim.t, (t, i) => t - ref.sim.t[i]), fr.x, fr.y) + '" fill="none" ' + strokeOf(r, r.id === P.sel ? 2.6 : r.thin ? 1.2 : 1.8) + ' stroke-linejoin="round"/>'; };
     RES.filter(r => r.id !== P.sel).forEach(draw); draw(resOf(P.sel));
     el.innerHTML = s + hoverLayer('delta', fr) + '</svg><div class="tip" id="delta-tip" hidden></div>';
     ctxDelta = { fr, xa, val: (r, i) => r.sim.t[i] - ref.sim.t[i], fmt: v => sgn(v, 3) + ' 秒' };
@@ -641,7 +576,7 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
   }
   function showTip(id, c, px) {
     const tip = $(id + '-tip'); if (!tip) return;
-    tip.innerHTML = '<b>' + posText(scrub) + '</b>' + RES.map(r => '<div class="row"' + (r.id === P.sel ? ' style="font-weight:700"' : '') + '><span class="key" style="background:' + r.color + '"></span>' + r.name + '<span class="v">' + c.fmt(c.val(r, scrub)) + '</span></div>').join('');
+    tip.innerHTML = '<b>' + posText(scrub) + '</b>' + RES.map(r => '<div class="row"' + (r.id === P.sel ? ' style="font-weight:700"' : '') + '>' + keyHtml(r) + r.name + '<span class="v">' + c.fmt(c.val(r, scrub)) + '</span></div>').join('');
     tip.hidden = false;
     const w = tip.offsetWidth, cw = c.fr.w;
     tip.style.left = Math.max(4, Math.min(cw - w - 4, px + 14 + w > cw ? px - w - 14 : px + 14)) + 'px';
@@ -666,13 +601,13 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const fr = frame(el, { xd: [18, 87], yd, xt: [20, 30, 40, 50, 60, 70, 80], yt: tickList(yd[0], yd[1], st), xf: t => t + '%', yf: t => t.toFixed(dec), xtitle: 'エイペックスの位置', aria: 'エイペックス位置ごとの区間タイム' });
     let s = fr.s;
     const yr = fr.y(ref.sim.time);
-    s += '<line x1="' + fr.m.l + '" x2="' + (fr.w - fr.m.r) + '" y1="' + yr + '" y2="' + yr + '" stroke="var(--s1)" stroke-width="2"/>';
+    s += '<line x1="' + fr.m.l + '" x2="' + (fr.w - fr.m.r) + '" y1="' + yr + '" y2="' + yr + '" stroke="var(--line-type)" stroke-width="1.8" stroke-dasharray="6 3"/>';
     const cx = fr.x(P.my.apex), cy = fr.y(my.sim.time), myTxt = 'いまのマイライン ' + P.my.apex + '% / ' + my.sim.time.toFixed(3) + ' 秒';
     const refLeft = !(cx < fr.m.l + 190 && Math.abs(cy + 22 - yr) < 22);
     s += '<text class="jp ink" x="' + (refLeft ? fr.m.l + 4 : fr.w - fr.m.r - 4) + '" y="' + (yr < fr.m.t + 20 ? yr + 14 : yr - 6) + '" text-anchor="' + (refLeft ? 'start' : 'end') + '">アウト・イン・アウト ' + ref.sim.time.toFixed(3) + ' 秒</text>';
-    s += '<polyline points="' + polyOf(sweep.map(p => p.a), sweep.map(p => p.t), fr.x, fr.y) + '" fill="none" stroke="var(--s5)" stroke-width="2" stroke-linejoin="round"/>';
-    sweep.forEach(p => { s += '<circle class="swp" data-a="' + p.a + '" cx="' + fr.x(p.a) + '" cy="' + fr.y(p.t) + '" r="4" fill="var(--s5)" stroke="var(--surface)" stroke-width="2" style="cursor:pointer"><title>エイペックス ' + p.a + '%: ' + p.t.toFixed(3) + ' 秒</title></circle>'; });
-    s += '<circle cx="' + cx + '" cy="' + cy + '" r="6.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>';
+    s += '<polyline points="' + polyOf(sweep.map(p => p.a), sweep.map(p => p.t), fr.x, fr.y) + '" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round"/>';
+    sweep.forEach(p => { s += '<circle class="swp" data-a="' + p.a + '" cx="' + fr.x(p.a) + '" cy="' + fr.y(p.t) + '" r="4" fill="var(--blue)" stroke="var(--face)" stroke-width="2" style="cursor:pointer"><title>エイペックス ' + p.a + '%: ' + p.t.toFixed(3) + ' 秒</title></circle>'; });
+    s += '<circle cx="' + cx + '" cy="' + cy + '" r="6.5" fill="var(--strong)" stroke="var(--face)" stroke-width="2"/>';
     const half = myTxt.length * 5.2, tx = Math.max(fr.m.l + half, Math.min(fr.w - fr.m.r - half, cx));
     s += '<text class="jp strong" x="' + tx + '" y="' + (cy + 22) + '" text-anchor="middle">' + myTxt + '</text>';
     el.innerHTML = s + '</svg><div class="tip" id="sweep-tip" hidden></div>';
@@ -684,13 +619,13 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const el = $('gg'), w = el.clientWidth || 300, h = el.clientHeight || 230, sel = resOf(P.sel);
     const gm = Math.ceil((car.mu + 0.3) * 2) / 2, rad = Math.max(0, Math.min(w, h) / 2 - 22), cx = w / 2, cy = h / 2, k = rad / gm;
     let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="選択中のラインの前後Gと横Gの軌跡">';
-    for (let g = 0.5; g <= gm + 1e-9; g += 0.5) s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + g * k + '" fill="none" stroke="var(--grid)"/><text x="' + (cx + 3) + '" y="' + (cy - g * k + 11) + '">' + g.toFixed(1) + ' G</text>';
-    s += '<line x1="' + (cx - rad) + '" x2="' + (cx + rad) + '" y1="' + cy + '" y2="' + cy + '" stroke="var(--axis)"/><line x1="' + cx + '" x2="' + cx + '" y1="' + (cy - rad) + '" y2="' + (cy + rad) + '" stroke="var(--axis)"/>';
+    for (let g = 0.5; g <= gm + 1e-9; g += 0.5) s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + g * k + '" fill="none" stroke="var(--rule)"/><text x="' + (cx + 3) + '" y="' + (cy - g * k + 11) + '">' + g.toFixed(1) + ' G</text>';
+    s += '<line x1="' + (cx - rad) + '" x2="' + (cx + rad) + '" y1="' + cy + '" y2="' + cy + '" stroke="var(--line-type)"/><line x1="' + cx + '" x2="' + cx + '" y1="' + (cy - rad) + '" y2="' + (cy + rad) + '" stroke="var(--line-type)"/>';
     s += '<text class="jp" x="' + cx + '" y="' + (cy - rad - 6) + '" text-anchor="middle">加速</text><text class="jp" x="' + cx + '" y="' + (cy + rad + 15) + '" text-anchor="middle">減速</text>';
     s += '<text class="jp" x="' + (cx - rad - 4) + '" y="' + (cy - 5) + '" text-anchor="start">左</text><text class="jp" x="' + (cx + rad + 4) + '" y="' + (cy - 5) + '" text-anchor="end">右</text>';
     const p = []; for (let i = 0; i < tr.N; i++) p.push((cx - sel.sim.ay[i] / G * k).toFixed(1) + ',' + (cy - sel.sim.ax[i] / G * k).toFixed(1));
     s += '<polyline points="' + p.join(' ') + '" fill="none" stroke="' + sel.color + '" stroke-width="2" stroke-linejoin="round"/>';
-    s += '<circle id="ggdot" r="5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/></svg>';
+    s += '<circle id="ggdot" r="5" fill="var(--strong)" stroke="var(--face)" stroke-width="2"/></svg>';
     el.innerHTML = s; ctxGG = { cx, cy, k };
     $('ggsub').textContent = sel.name + ' のGの使い方（横軸: 横G、縦軸: 前後G）';
   }
@@ -703,23 +638,23 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     $('statepos').textContent = sel.name + ' ／ ' + posText(i);
     const tire = (x, y, idx, anchor) => {
       const ratio = clamp(kg[idx] / full, 0, 1);
-      return '<rect x="' + x + '" y="' + y + '" width="15" height="30" rx="4" fill="var(--s1)" fill-opacity="' + (0.10 + 0.90 * ratio).toFixed(2) + '" stroke="var(--ink2)"/>' +
+      return '<rect x="' + x + '" y="' + y + '" width="15" height="30" rx="4" fill="var(--text)" fill-opacity="' + (0.10 + 0.90 * ratio).toFixed(2) + '" stroke="var(--text)"/>' +
         '<text class="strong" x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 16) + '" text-anchor="' + anchor + '" style="font-size:14px">' + kg[idx].toFixed(0) + '</text>' +
         '<text x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 28) + '" text-anchor="' + anchor + '">kg</text>';
     };
     let s = '<svg viewBox="0 0 330 182" role="img" aria-label="4輪の荷重とロール・ピッチの様子" style="display:block;width:100%;height:auto;max-width:420px">';
-    s += '<rect x="62" y="26" width="56" height="124" rx="16" fill="none" stroke="var(--axis)" stroke-width="1.5"/><path d="M72 62 Q90 50 108 62" fill="none" stroke="var(--axis)" stroke-width="1.5"/>';
+    s += '<rect x="62" y="26" width="56" height="124" rx="16" fill="none" stroke="var(--line-type)" stroke-width="1.5"/><path d="M72 62 Q90 50 108 62" fill="none" stroke="var(--line-type)" stroke-width="1.5"/>';
     s += '<text class="jp" x="90" y="16" text-anchor="middle">前</text>';
     s += tire(44, 36, 0, 'end') + tire(121, 36, 1, 'start') + tire(44, 110, 2, 'end') + tire(121, 110, 3, 'start');
     s += '<text class="jp" x="90" y="174" text-anchor="middle">4輪の荷重</text>';
     /* 後ろから見た図（ロール） */
     s += '<text class="jp ink" x="255" y="16" text-anchor="middle">ロール ' + Math.abs(roll).toFixed(1) + '°' + (roll > 0.05 ? ' 右へ' : roll < -0.05 ? ' 左へ' : '') + '</text>';
-    s += '<line x1="196" x2="314" y1="78" y2="78" stroke="var(--axis)"/><rect x="206" y="60" width="11" height="18" rx="3" fill="var(--ink2)"/><rect x="293" y="60" width="11" height="18" rx="3" fill="var(--ink2)"/>';
-    s += '<g transform="rotate(' + (roll * EX).toFixed(2) + ' 255 72)"><rect x="214" y="34" width="82" height="30" rx="8" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><rect x="230" y="26" width="50" height="12" rx="5" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/></g>';
+    s += '<line x1="196" x2="314" y1="78" y2="78" stroke="var(--line-type)"/><rect x="206" y="60" width="11" height="18" rx="3" fill="var(--text)"/><rect x="293" y="60" width="11" height="18" rx="3" fill="var(--text)"/>';
+    s += '<g transform="rotate(' + (roll * EX).toFixed(2) + ' 255 72)"><rect x="214" y="34" width="82" height="30" rx="8" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5"/><rect x="230" y="26" width="50" height="12" rx="5" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5"/></g>';
     /* 横から見た図（ピッチ）: 右が前 */
     s += '<text class="jp ink" x="255" y="106" text-anchor="middle">ピッチ ' + Math.abs(pitch).toFixed(1) + '°' + (pitch < -0.05 ? ' 前下がり' : pitch > 0.05 ? ' 後ろ下がり' : '') + '</text>';
-    s += '<line x1="196" x2="314" y1="166" y2="166" stroke="var(--axis)"/><circle cx="218" cy="157" r="9" fill="var(--ink2)"/><circle cx="290" cy="157" r="9" fill="var(--ink2)"/>';
-    s += '<g transform="rotate(' + (-pitch * EX).toFixed(2) + ' 254 150)"><rect x="200" y="132" width="108" height="20" rx="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><path d="M226 132 L236 118 L272 118 L286 132" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/></g>';
+    s += '<line x1="196" x2="314" y1="166" y2="166" stroke="var(--line-type)"/><circle cx="218" cy="157" r="9" fill="var(--text)"/><circle cx="290" cy="157" r="9" fill="var(--text)"/>';
+    s += '<g transform="rotate(' + (-pitch * EX).toFixed(2) + ' 254 150)"><rect x="200" y="132" width="108" height="20" rx="7" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5"/><path d="M226 132 L236 118 L272 118 L286 132" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5" stroke-linejoin="round"/></g>';
     s += '<text class="jp" x="318" y="146" text-anchor="middle">前</text></svg>';
     const meter = (label, u) => '<div class="meter"><span>' + label + '</span><span class="track"><span class="fill' + (u >= 0.985 ? ' lim' : '') + '" style="display:block;width:' + clamp(u * 100, 0, 100).toFixed(0) + '%"></span></span><span class="val">' + (u * 100).toFixed(0) + '%' + (u >= 0.985 ? ' 限界' : '') + '</span></div>';
     $('state').innerHTML = '<div style="display:grid;gap:12px">' +
@@ -778,6 +713,7 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     };
     $('map').addEventListener('pointermove', mapMove); $('map').addEventListener('pointerdown', mapMove);
     $('sweep').addEventListener('click', e => { const c = e.target.closest('.swp'); if (!c) return; P.my.apex = +c.dataset.a; P.sel = 'my'; syncControls(); update(); });
+    document.addEventListener('themechange', () => { if (RES.length) renderAll(); });
     let rT = 0, lastW = $('main').clientWidth;
     new ResizeObserver(() => { const w = $('main').clientWidth; if (w === lastW) return; lastW = w; clearTimeout(rT); rT = setTimeout(() => { if (RES.length) renderAll(); }, 120); }).observe($('main'));
   }
