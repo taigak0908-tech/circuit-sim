@@ -34,7 +34,7 @@ tr.sel td:first-child{font-weight:700;color:var(--strong)}
 .rowsel{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
 .rowsel input{position:absolute;opacity:0;width:1px;height:1px}
 .rowsel input:focus-visible + .key{outline:2px solid var(--blue);outline-offset:2px}
-.tag{font-size:11px;color:var(--weak);border:1px solid var(--line-type);padding:0 5px;margin-left:6px}
+.tag{font-size:11px;color:var(--weak);border:1px solid var(--ctl-line);padding:0 5px;margin-left:6px}
 td.t{font-size:15px}
 
 @media (max-width:980px){
@@ -262,11 +262,11 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
   /* 色が付くのはマイライン（青）だけ。型ラインは灰色で線種（dash）で見分ける（区間モードと同じ線種: アウト・イン・アウト＝破線、
      レイト＝点線、インベタ＝一点鎖線。区間モードに無いアーリーは細い実線）。最速のラインは凡例と表の黄色い板で示す */
   const SERIES = [
-    { id: 'oio', name: 'アウト・イン・アウト', color: 'var(--line-type)', dash: '6 3' },
-    { id: 'late', name: 'レイトエイペックス', color: 'var(--line-type)', dash: '2 3' },
-    { id: 'early', name: 'アーリーエイペックス', color: 'var(--line-type)', dash: '', thin: true },
-    { id: 'inside', name: 'インベタ', color: 'var(--line-type)', dash: '8 3 2 3' },
-    { id: 'my', name: 'マイライン', color: 'var(--blue)', dash: '' }
+    { id: 'oio', name: 'アウト・イン・アウト', short: 'アウトイン', color: 'var(--line-type)', dash: '6 3' },
+    { id: 'late', name: 'レイトエイペックス', short: 'レイト', color: 'var(--line-type)', dash: '2 3' },
+    { id: 'early', name: 'アーリーエイペックス', short: 'アーリー', color: 'var(--line-type)', dash: '', thin: true },
+    { id: 'inside', name: 'インベタ', short: 'インベタ', color: 'var(--line-type)', dash: '8 3 2 3' },
+    { id: 'my', name: 'マイライン', short: 'マイライン', color: 'var(--blue)', dash: '' }
   ];
   /* 線の見た目の属性（色・太さ・線種）と、凡例・表の線種の見本（js/section-render.js の同名の関数と同じ） */
   const strokeOf = (s, w) => 'stroke="' + s.color + '" stroke-width="' + w + '"' + (s.dash ? ' stroke-dasharray="' + s.dash + '" stroke-linecap="butt"' : ' stroke-linecap="round"');
@@ -439,10 +439,11 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     txt += '<p>ボトム付近では' + bal + '。</p>';
     $('verdict').innerHTML = txt;
     /* ヘッダー帯の黄色い板: 最速が基準以外なら基準との差、基準が最速ならそのタイム */
-    const plate = (l, n) => '<span class="plate-l">' + l + '</span><span class="plate-n">' + n + '</span><span class="plate-u">秒</span>';
+    /* ラベルは PC 用（正式名）とスマホ用（短い名前）の2つを入れ、css で出し分ける（スマホの板は幅が狭く、長い名前が数字に重なるため） */
+    const plate = (l, sl, n) => '<span class="plate-l"><span class="lbl-long">' + l + '</span><span class="lbl-short">' + sl + '</span></span><span class="plate-n">' + n + '</span><span class="plate-u">秒</span>';
     $('plate').innerHTML = best.id === 'oio' || Math.abs(best.sim.time - ref.sim.time) < 0.0005
-      ? plate('最速は基準のアウト・イン・アウト', best.sim.time.toFixed(3))
-      : plate(best.name + '<wbr>が基準より', sgn(best.sim.time - ref.sim.time, 3));
+      ? plate('最速は基準のアウト・イン・アウト', '最速は<wbr>基準', best.sim.time.toFixed(3))
+      : plate(best.name + 'が基準より', best.short + '<wbr>が基準より', sgn(best.sim.time - ref.sim.time, 3));
   }
 
   /* 凡例（選択ボタン） */

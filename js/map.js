@@ -159,7 +159,7 @@ function createMap(el) {
   const measureLayer = L.layerGroup().addTo(map);
   let carMarker = null, routeLine = null;
 
-  /* 下地のタイル。name は 'osm'（地図）か 'aerial'（航空写真）。「地図」は夜なら CARTO の暗い地図、昼なら OSM 標準 */
+  /* 下地のタイル。name は 'osm'（地図）か 'aerial'（航空写真）。「地図」は夜なら OSM 標準を CSS で暗くしたもの（TILES.dark）、昼なら OSM 標準 */
   function setBase(name) {
     baseName = TILES[name] ? name : 'osm';
     const t = baseName === 'osm' && _isNight() ? TILES.dark : TILES[baseName];

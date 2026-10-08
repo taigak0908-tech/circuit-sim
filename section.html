@@ -33,7 +33,7 @@
 .leaflet-container{font-family:var(--font-jp);font-size:12px;background:var(--map-ground)}
 /* 夜の地図: OSM 標準を反転して暗い路面の色に寄せる（js/map.js の TILES.dark） */
 .tiles-night{filter:grayscale(1) invert(1) brightness(.78) contrast(.92)}   /* 灰色の暗い地図（道路は明るい灰の線）。経路・ライン・ひし形は別の層なのでかからない */
-.leaflet-bar{border:1px solid var(--line-type)!important;border-radius:0!important;box-shadow:none!important}
+.leaflet-bar{border:1px solid var(--ctl-line)!important;border-radius:0!important;box-shadow:none!important}
 .leaflet-bar a, .leaflet-bar a:hover{background:var(--face);color:var(--strong);border-bottom-color:var(--rule);border-radius:0!important}
 .leaflet-control-attribution{background:var(--ground)!important;color:var(--weak)}
 .leaflet-control-attribution a{color:var(--text)}
@@ -72,7 +72,7 @@
 .table .cbtn span:last-child{font-family:var(--font-num);font-weight:500}
 .table .btn-sm{display:inline-grid;place-items:center;font:inherit;font-size:12px;white-space:nowrap;color:var(--text);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-type);min-height:28px}   /* 行ごとに枠のボタンを並べると騒がしいので、静かなリンクにする */
 .table .btn-sm:hover{color:var(--strong);text-decoration-color:var(--strong)}
-.res-side .stat .v{font-size:22px}
+.res-side .stat .v{font-size:20px}   /* 右列は狭いので、速度の単位と前後Gがくっつかない大きさに */
 .res-side .stat .l{font-size:11px;white-space:nowrap}
 .table td.t .sub, .table td.t .slow{font-weight:500;margin-left:2px}
 .table .key{width:20px}
