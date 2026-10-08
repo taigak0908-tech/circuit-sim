@@ -704,3 +704,7 @@
   renderSaved();
   renderHeader();
 })();
+
+// フォームは送信しない（Enter で画面が切り替わらないように）。以前は HTML の onsubmit 属性で止めていたが、
+// CSP（外のプログラムや埋め込みのプログラムを動かさない制限）で属性のプログラムは動かないため、ここで止める
+document.querySelectorAll('form.controls').forEach(f => f.addEventListener('submit', ev => ev.preventDefault()));

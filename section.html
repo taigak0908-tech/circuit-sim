@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://cyberjapandata.gsi.go.jp; connect-src 'self' https://router.project-osrm.org https://overpass-api.de; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>走行ライン区間シム</title>
 <script src="js/header.js"></script>
@@ -142,7 +144,7 @@
 <div class="wrap">
   <div class="layout">
     <div class="side">
-    <form class="controls" id="sec-controls" autocomplete="off" onsubmit="return false">
+    <form class="controls" id="sec-controls" autocomplete="off">
       <details id="d-sec" open>
         <summary>区間</summary>
         <div class="grp">
@@ -159,7 +161,7 @@
         </div>
       </details>
     </form>
-    <form class="controls" id="controls" autocomplete="off" onsubmit="return false">
+    <form class="controls" id="controls" autocomplete="off">
       <details id="d-road" open>
         <summary>道<span class="sum-v" id="sum-road"></span></summary>
         <div class="grp">

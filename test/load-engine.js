@@ -5,9 +5,11 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
+/* 画面のプログラムは 2026-10-09 に index.html から js/main.js へ出した（CSP のため）。古い形でも読めるようにしておく */
+const pageSource = () => fs.existsSync(path.join(root, 'js', 'main.js')) ? read('js/main.js') : read('index.html');
 
 function loadEngine() {
-  const html = read('index.html');
+  const html = pageSource();
   const a = html.indexOf('/* ===== 計算エンジン');
   const b = html.indexOf('/* ===== 画面');
   if (a < 0 || b < 0) throw new Error('index.html にエンジン部の目印コメントが見つからない');
@@ -21,7 +23,7 @@ function loadEngine() {
 
 /* 画面部の CAR_PRESETS / CORNER_PRESETS を index.html から読み取る（値の二重管理を避ける） */
 function loadPresets() {
-  const html = read('index.html');
+  const html = pageSource();
   const grab = name => {
     const m = html.match(new RegExp('const ' + name + ' = (\\{[\\s\\S]*?\\r?\\n  \\});'));
     if (!m) throw new Error(name + ' が index.html に見つからない');
