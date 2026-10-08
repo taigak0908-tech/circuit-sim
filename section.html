@@ -8,7 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:ital,wght@0,500;0,700;1,700;1,800&family=BIZ+UDPGothic:wght@400;700&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<!-- Leaflet は CDN を使わず同梱（vendor/leaflet-1.9.4。npm leaflet@1.9.4 の dist をそのまま）。同じ github.io の他アプリのデータを外部スクリプトから守るため -->
+<link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css">
 <link rel="stylesheet" href="css/theme.css">
 <style>
 /* 区間モード固有。共通の色・書体・ボタンは css/theme.css */
@@ -262,7 +263,7 @@
     </div>
   </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="vendor/leaflet-1.9.4/leaflet.js"></script>
 <script src="js/physics.js"></script>
 <script src="js/track.js"></script>
 <script src="js/lines.js"></script>
