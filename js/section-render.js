@@ -64,12 +64,12 @@ const SectionRender = (function () {
   function plateHtml(info) {
     const box = (l, n) => '<span class="plate-l">' + l + '</span><span class="plate-n">' + n + '</span><span class="plate-u">秒</span>';
     if (info.straight) return box('区間タイム', info.time.toFixed(2));
-    return box('最速は中央より', sgn(info.delta, 2));
+    return box('最速は<wbr>中央より', sgn(info.delta, 2));   // スマホでは「最速は」で折り返す
   }
 
   /* ---------- 凡例（チェックボックス＋選択ボタン） ---------- */
   /* 凡例の末尾の説明。型ラインは計算の参考値で、判定カードの基準は「最速」 */
-  const LEGEND_NOTE = '型ライン（全アウトインアウト・全レイト・全インベタ）は全コーナーに同じ型を当てた参考値です。峠では「最速」と「自分のライン」を基準にしてください';
+  const LEGEND_NOTE = '型ライン（全アウトインアウト、全レイト、全インベタ）は全コーナーに同じ型を当てた参考値です。峠では「最速」と「自分のライン」を基準にしてください';
   function legendHtml() {
     return SERIES.map(s =>
       '<span class="lg"><input type="checkbox" data-vis="' + s.id + '" aria-label="' + s.name + 'を表示">' +
@@ -121,7 +121,7 @@ const SectionRender = (function () {
         return '<td colspan="2" class="t' + cls(s.id) + '">' + t.toFixed(2) + ' ' + (s.id === 'center' ? '<span class="sub">基準</span>' : diff(t)) + '</td>';
       }).join('') + '<td></td></tr></tbody></table>';
     }
-    if (tr.corners.length) h += '<p class="hint">「詳しく」は、そのコーナーの条件（入口の速度は中央ライン）を 1コーナー比較へ渡して新しいタブで開きます。1コーナー比較は半径 5〜200 m・幅 3〜16 m・入口速度 20〜220 km/h の範囲なので、外れている値は端の値になります。</p>';
+    if (tr.corners.length) h += '<p class="hint">「詳しく」は、そのコーナーの条件（入口の速度は中央ライン）を 1コーナー比較へ渡して新しいタブで開きます。1コーナー比較は半径 5〜200 m、幅 3〜16 m、入口速度 20〜220 km/h の範囲なので、外れている値は端の値になります。</p>';
     return h;
   }
 
@@ -270,7 +270,7 @@ const SectionRender = (function () {
         '<text class="strong" x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 16) + '" text-anchor="' + anchor + '" style="font-size:14px">' + kg[idx].toFixed(0) + '</text>' +
         '<text x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 28) + '" text-anchor="' + anchor + '">kg</text>';
     };
-    let s = '<svg viewBox="0 0 330 182" role="img" aria-label="4輪の荷重とロール・ピッチの様子" style="display:block;width:100%;height:auto;max-width:420px">';
+    let s = '<svg viewBox="0 0 330 182" role="img" aria-label="4輪の荷重とロールとピッチの様子" style="display:block;width:100%;height:auto;max-width:420px">';
     s += '<rect x="62" y="26" width="56" height="124" rx="16" fill="none" stroke="var(--line-type)" stroke-width="1.5"/><path d="M72 62 Q90 50 108 62" fill="none" stroke="var(--line-type)" stroke-width="1.5"/>';
     s += '<text class="jp" x="90" y="16" text-anchor="middle">前</text>';
     s += tire(44, 36, 0, 'end') + tire(121, 36, 1, 'start') + tire(44, 110, 2, 'end') + tire(121, 110, 3, 'start');

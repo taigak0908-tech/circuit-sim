@@ -26,7 +26,7 @@ test('判定: 最速と中央の差・最も縮んだコーナーを文にする
   const html = SR.verdictHtml(info);
   assert.ok(html.includes(R.fast.sim.time.toFixed(2)));
   /* 黄色い板: 最速と中央の差（−は U+2212） */
-  const plate = SR.plateHtml(info);
+  const plate = SR.plateHtml(info).replace(/<wbr>/g, '');
   assert.ok(plate.includes('最速は中央より') && plate.includes('<span class="plate-n">' + SR.sgn(info.delta, 2) + '</span>'), plate);
   if (info.worst) {
     assert.ok(info.worst.d < 0);
@@ -40,7 +40,7 @@ test('判定: 最速と中央の差・最も縮んだコーナーを文にする
   const links = t.match(/<a class="btn-sm"[^>]*href="[^"]+"/g) || [];
   assert.equal(links.length, tr.corners.length);
   tr.corners.forEach((k, c) => assert.ok(links[c].includes('href="' + SR.cornerLinkUrl(k, R.center.sim.v[k.i0], tr.W) + '"'), links[c]));
-  assert.ok(t.includes('半径 5〜200 m・幅 3〜16 m・入口速度 20〜220 km/h'));
+  assert.ok(t.includes('半径 5〜200 m、幅 3〜16 m、入口速度 20〜220 km/h'));
   /* 行頭はひし形の番号＋「右 R38 90°」。選んだ行（selCorner=0）は pick */
   tr.corners.forEach(k => assert.ok(t.includes('<span class="dia"><span>' + k.no + '</span></span><span>' + (k.dir === 'L' ? '左' : '右') + ' R' + Math.round(k.rMin) + ' ' + Math.round(k.angDeg) + '°</span>')));
   assert.ok(t.includes('<tr data-c="0" class="pick" aria-current="true">'));
@@ -79,7 +79,7 @@ test('判定: コーナー0個は「ほぼ直線」、差が負なら −X.XX秒
   assert.equal(info.worst.label, '③左R22');
   const html = SR.verdictHtml(info);
   assert.ok(html.includes('19.66') && html.includes('③左R22') && html.includes('−0.61秒') && !html.includes('中央のほうが速い'), html);
-  assert.ok(SR.plateHtml(info).includes('<span class="plate-l">最速は中央より</span><span class="plate-n">−0.34</span>'), SR.plateHtml(info));
+  assert.ok(SR.plateHtml(info).replace(/<wbr>/g, '').includes('<span class="plate-l">最速は中央より</span><span class="plate-n">−0.34</span>'), SR.plateHtml(info));
   /* 最速が中央より遅い（探索中の仮の値など）は ＋ と「中央のほうが速い」 */
   const slow = SR.verdictInfo({ center: mk2(20, 3, 4), fast: mk2(20.2, 3.1, 4.1) }, tr2);
   assert.ok(SR.plateHtml(slow).includes('+0.20') && SR.verdictHtml(slow).includes('中央のほうが速いラインです'));

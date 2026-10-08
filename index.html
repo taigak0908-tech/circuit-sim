@@ -58,6 +58,7 @@ td.t{font-size:15px}
       <nav class="tabs" aria-label="モード切替"><a href="index.html" aria-current="page">1コーナー</a><a href="section.html">区間</a></nav>
     </div>
     <p class="hd-lede">コーナー1つを5通りのラインで走らせ、荷重移動を含めてタイムを比べます。</p>
+    <div class="hd-info sp-only"><p class="hd-name" id="hd-name"></p><p class="hd-stats" id="hd-stats"></p></div>
     <div class="hd-end">
       <div class="theme" role="group" aria-label="画面の明るさ"><button type="button" id="theme-day" aria-pressed="false">昼</button><button type="button" id="theme-night" aria-pressed="false">夜</button></div>
       <div class="plate" id="plate"></div>
@@ -137,10 +138,10 @@ td.t{font-size:15px}
       <section class="notes">
         <h2>計算の前提</h2>
         <ul>
-          <li>各地点でタイヤが出せる限界まで加速・減速・旋回を使い切る、理想的なドライバーを仮定した準定常モデルです。実走タイムの絶対値より、ライン同士の差を見る用途に向いています。</li>
+          <li>各地点でタイヤが出せる限界まで加速、減速、旋回を使い切る、理想的なドライバーを仮定した準定常モデルです。実走タイムの絶対値より、ライン同士の差を見る用途に向いています。</li>
           <li>荷重は加減速で前後に、横Gで左右に移動します。タイヤは荷重が増えるほど摩擦係数が少し下がる設定なので、荷重移動が大きい車ほど合計グリップが減ります。</li>
-          <li>ロール角・ピッチ角は表示用です。キャンバー変化、ダンパーの過渡応答、タイヤ温度、路面の勾配やバンクは計算していません。</li>
-          <li>4WD とブレーキは前後に理想配分できるものとしています。車種の数値はカタログ値をもとにした概算で、重心高・空力・ロール率は推定値です。</li>
+          <li>ロール角とピッチ角は表示用です。キャンバー変化、ダンパーの過渡応答、タイヤ温度、路面の勾配やバンクは計算していません。</li>
+          <li>4WD とブレーキは前後に理想配分できるものとしています。車種の数値はカタログ値をもとにした概算で、重心高、空力、ロール率は推定値です。</li>
         </ul>
       </section>
     </div>
@@ -635,14 +636,14 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
     const sel = resOf(P.sel), i = scrub, v = sel.sim.v[i], ax = sel.sim.ax[i], ay = sel.sim.ay[i];
     const ts = tireState(car, v, ax, ay), kg = ts.Fz.map(f => f / G), full = car.m / 2;
     const roll = car.rollGrad * ay / G, pitch = car.pitchGrad * ax / G, EX = 4;
-    $('statepos').textContent = sel.name + ' ／ ' + posText(i);
+    $('statepos').textContent = sel.name + '　' + posText(i);
     const tire = (x, y, idx, anchor) => {
       const ratio = clamp(kg[idx] / full, 0, 1);
       return '<rect x="' + x + '" y="' + y + '" width="15" height="30" rx="4" fill="var(--text)" fill-opacity="' + (0.10 + 0.90 * ratio).toFixed(2) + '" stroke="var(--text)"/>' +
         '<text class="strong" x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 16) + '" text-anchor="' + anchor + '" style="font-size:14px">' + kg[idx].toFixed(0) + '</text>' +
         '<text x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 28) + '" text-anchor="' + anchor + '">kg</text>';
     };
-    let s = '<svg viewBox="0 0 330 182" role="img" aria-label="4輪の荷重とロール・ピッチの様子" style="display:block;width:100%;height:auto;max-width:420px">';
+    let s = '<svg viewBox="0 0 330 182" role="img" aria-label="4輪の荷重とロールとピッチの様子" style="display:block;width:100%;height:auto;max-width:420px">';
     s += '<rect x="62" y="26" width="56" height="124" rx="16" fill="none" stroke="var(--line-type)" stroke-width="1.5"/><path d="M72 62 Q90 50 108 62" fill="none" stroke="var(--line-type)" stroke-width="1.5"/>';
     s += '<text class="jp" x="90" y="16" text-anchor="middle">前</text>';
     s += tire(44, 36, 0, 'end') + tire(121, 36, 1, 'start') + tire(44, 110, 2, 'end') + tire(121, 110, 3, 'start');
@@ -674,8 +675,16 @@ function runLine(tr, car, vEntry, spec) { const line = makeLine(tr, spec); retur
   }
   function setScrub(i, user) { scrub = clamp(i, 0, tr.N - 1); if (user) userScrub = true; updateScrub(); }
 
+  /* スマホのヘッダー帯の2行目: いまのコーナーの要約（区間モードの区間名と距離にあたる） */
+  function renderHeader() {
+    const c = P.corner, b = x => '<b>' + x + '</b>';
+    $('hd-name').textContent = (CORNER_PRESETS[P.cornerPreset] ? CORNER_PRESETS[P.cornerPreset].label : 'カスタム') + 'コーナー';
+    $('hd-stats').innerHTML = '<span>R ' + b(c.R) + ' m</span><span>' + b(c.angDeg) + '°</span>';
+  }
+
   function renderAll() {
     $('scrub').max = tr.N - 1;
+    renderHeader();
     renderVerdict(); renderLegend(); renderTable(); renderMap(); renderSpeed(); renderDelta(); renderGG(); renderSweep(); updateScrub();
   }
   let sweepT = 0, pending = false;

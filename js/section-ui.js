@@ -108,7 +108,8 @@
           : !S.points.end ? '終点を押して、地図で道路をクリック' : '';
     el.textContent = t; el.hidden = !t;
   }
-  function updateManualBtn() { $('btn-manual').disabled = !(S.failCount >= 3 || S.mode === 'manual'); }
+  /* 手動のなぞりは、経路が3回続けて取れなかったときだけ出す（無効のボタンを常に並べない） */
+  function updateManualBtn() { const on = S.failCount >= 3 || S.mode === 'manual'; $('btn-manual').disabled = !on; $('btn-manual').hidden = !on; }
   function toggleMode(m) { setMode(S.mode === m ? null : m); }
 
   /* ---------- 地図の描画更新 ---------- */
@@ -218,11 +219,12 @@
   }
   /* ヘッダー帯（区間名・距離・カーブ数・車・幅）と、たたんだ設定の見出しに添える今の値 */
   function renderHeader() {
-    const nm = $('hd-name'); nm.textContent = S.name; nm.hidden = !S.name;
+    /* 区間名が無いときの仮の名前はスマホだけに出す（PC では .is-empty を隠す） */
+    const nm = $('hd-name'); nm.textContent = S.name || (S.tr ? '名前のない区間' : '区間を作ってください'); nm.classList.toggle('is-empty', !S.name);
     const car = CAR_SHORT[S.preset] || CAR_SHORT.custom, b = x => '<b>' + x + '</b>';
     $('hd-stats').innerHTML = (S.tr ? '<span>' + b((S.tr.total / 1000).toFixed(2)) + ' km</span><span>' + b(S.tr.corners.length) + ' カーブ</span>' : '') +
-      '<span>' + b(car) + '</span><span>幅 ' + b(S.W.toFixed(1)) + ' m</span>';
-    $('sum-road').textContent = '（幅 ' + S.W.toFixed(1) + ' m・' + (S.laneMode === 'lane' ? '片側のみ' : '全幅') + '）';
+      '<span class="pc-only">' + b(car) + '</span><span class="pc-only">幅 ' + b(S.W.toFixed(1)) + ' m</span>';   // 車と幅はスマホでは出さない
+    $('sum-road').textContent = '（幅 ' + S.W.toFixed(1) + ' m　' + (S.laneMode === 'lane' ? '片側のみ' : '全幅') + '）';
     $('sum-car').textContent = '（' + car + '）';
   }
   function renderLegend() {
@@ -308,7 +310,7 @@
     updateCross('speed', speedCtx); updateCross('delta', deltaCtx);
     api.setCar(xyToLatLng(R.line.px[i], R.line.py[i], S.tr.origin));
     $('state').innerHTML = SR.stateHtml(S.car, R.sim, i);
-    $('statepos').textContent = SR.seriesOf(S.sel).name + ' ／ ' + SR.posText(S.tr, i);
+    $('statepos').textContent = SR.seriesOf(S.sel).name + '　' + SR.posText(S.tr, i);
     const dot = $('ggdot');
     if (dot && ggCtx) { const d = SR.ggDot(ggCtx, R.sim, i); dot.setAttribute('cx', d.x); dot.setAttribute('cy', d.y); }
   }
@@ -369,7 +371,7 @@
     ['my-corner', 'my-apex', 'my-inside', 'my-hold'].forEach(id => { $(id).disabled = !has; });
     const f = fastCurrent();
     $('my-reset').disabled = !(has && f && f.params);
-    $('my-hint').textContent = !tr ? '区間を決めると、コーナーごとに調整できます。' : has ? 'コーナーを選んで、エイペックスの位置・内への寄せ・入口で外に居続ける距離を動かします。' : 'この区間にはコーナーがありません。';
+    $('my-hint').textContent = !tr ? '区間を決めると、コーナーごとに調整できます。' : has ? 'コーナーを選んで、エイペックスの位置、内への寄せ、入口で外に居続ける距離を動かします。' : 'この区間にはコーナーがありません。';
     const p = has && S.params[+sel.value];
     if (!p) return;
     $('my-apex').value = Math.round(p.apex * 100); $('my-inside').value = Math.round(p.inside * 100); $('my-hold').value = p.hold;
@@ -414,7 +416,7 @@
     api.drawCorners(tr.corners, tr);
     if (fit) api.fitRoute();
     const n = tr.corners.length;
-    $('sec-info').textContent = '全長 ' + Math.round(tr.total) + ' m・コーナー ' + n + ' 個';
+    $('sec-info').textContent = '全長 ' + Math.round(tr.total) + ' m　コーナー ' + n + ' 個';
     if (n === 0) showMsg('ほぼ直線です', { info: true }); else showMsg(null);
   }
 
@@ -639,7 +641,7 @@
       const li = document.createElement('li'), nm = document.createElement('strong'), info = document.createElement('span'), row = document.createElement('div');
       nm.textContent = s.name;
       info.className = 'sub num';
-      info.textContent = new Date(s.savedAt).toLocaleString('ja-JP') + ' ・ ' + Math.round(s.total) + ' m';
+      info.textContent = new Date(s.savedAt).toLocaleString('ja-JP') + '　' + Math.round(s.total) + ' m';
       row.className = 'seg c2';
       [['open', '開く'], ['del', '削除']].forEach(([act, label]) => {
         const b = document.createElement('button'); b.type = 'button'; b.dataset.act = act; b.dataset.id = s.id; b.textContent = label; row.appendChild(b);

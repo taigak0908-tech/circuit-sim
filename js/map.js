@@ -122,9 +122,24 @@ function cornerText(c) {
 function cornerDiamond(no) { return '<span class="dia"><span>' + no + '</span></span>'; }
 
 /* 地図のズームがこれ未満なら、コーナーのラベルはひし形の番号だけにする（密集したコーナーで文が重なるため） */
-const CORNER_FULL_ZOOM = 16;
+const CORNER_FULL_ZOOM = 17;
+const LABEL_GAP = 36;      // px。画面上でこれより近くに別のコーナーがあるラベルは、文を出さずひし形だけにする
+const LABEL_TEXT_W = 96;   // px。ひし形の右に出る文（「右 R38 90°」）のおおよその幅
 
-/* 地図でひし形の横に添える文。zoom が CORNER_FULL_ZOOM 以上なら「右 R38 90°」、未満なら空（番号だけ） */
+/* 文つきラベルが重なるかの判定（純粋）。pts = 各コーナーの画面上の位置 [{x,y}]。
+   別のコーナーが gap 以内にある、またはその文が出る右側の帯（幅 textW、上下 gap/2）に入っているものを true にする。
+   ひし形同士が重なるのは許容し、文だけを省く */
+function crowdedLabels(pts, gap, textW) {
+  const G = gap == null ? LABEL_GAP : gap, W = textW == null ? LABEL_TEXT_W : textW;
+  return pts.map((p, i) => pts.some((q, j) => {
+    if (i === j) return false;
+    const dx = q.x - p.x, dy = q.y - p.y;
+    return Math.hypot(dx, dy) < G || (dx > 0 && dx < W + G && Math.abs(dy) < G / 2);
+  }));
+}
+
+/* 地図でひし形の横に添える文。zoom が CORNER_FULL_ZOOM 以上なら「右 R38 90°」、未満なら空（番号だけ）。
+   さらに画面上で混み合うものは crowdedLabels で文を省く */
 function cornerMapLabel(c, zoom) { return zoom >= CORNER_FULL_ZOOM ? cornerText(c) : ''; }
 
 /* CSS 変数の実際の色（Leaflet は var() を使えないため、描くたびに読む。昼夜の切替に追従する） */
@@ -176,16 +191,18 @@ function createMap(el) {
     (m.vias || []).forEach((p, i) => _mk(p, 'pt-via', String(i + 1)).addTo(markerLayer));
     if (m.end) _mk(m.end, 'pt-end', 'G').addTo(markerLayer);
   }
-  /* コーナーのラベルを描く。corners/tr は覚えておき、ズームが変わったら（zoomend）同じ内容でラベルだけ作り直す */
+  /* コーナーのラベルを描く。corners/tr は覚えておき、ズーム・移動のたびに（moveend）同じ内容でラベルだけ作り直す
+     （ズームで文の有無が、画面上の間隔で重なりの判定が変わるため） */
   let cornersShown = null, cornersTr = null;
   function _renderCorners() {
     cornerLayer.clearLayers();
     if (!cornersShown || !cornersTr) return;
     const tr = cornersTr, z = map.getZoom();
-    cornersShown.forEach(c => {
-      const mid = Math.round((c.i0 + c.i1) / 2);
-      const p = _xyToLatLng(tr.cx[mid], tr.cy[mid], tr.origin);
-      const text = cornerMapLabel(c, z);
+    const pos = cornersShown.map(c => { const mid = Math.round((c.i0 + c.i1) / 2); return _xyToLatLng(tr.cx[mid], tr.cy[mid], tr.origin); });
+    const crowded = crowdedLabels(pos.map(p => map.latLngToContainerPoint([p.lat, p.lng])));
+    cornersShown.forEach((c, k) => {
+      const p = pos[k];
+      const text = crowded[k] ? '' : cornerMapLabel(c, z);
       L.marker([p.lat, p.lng], { interactive: false, keyboard: false, zIndexOffset: 500,
         icon: L.divIcon({ className: 'corner-wrap', html: '<span class="corner-lbl">' + cornerDiamond(c.no) + (text ? '<span class="corner-t">' + text + '</span>' : '') + '</span>', iconSize: [0, 0] }) }).addTo(cornerLayer);
     });
@@ -233,8 +250,8 @@ function createMap(el) {
   restoreView();
   setBase('osm');
   map.on('moveend', saveView);
-  map.on('zoomend', () => { if (cornersShown) _renderCorners(); });   // ズームでラベルの詳しさを切り替える
+  map.on('moveend', () => { if (cornersShown) _renderCorners(); });   // ズーム・移動でラベルの詳しさと重なりを見直す
   return { map, setBase, refreshTheme, setRoute, setMarkers, drawCorners, drawLines, clearLines, setCar, measureLine, onMapClick, fitRoute, saveView, restoreView };
 }
 
-if (typeof module !== 'undefined') module.exports = { fetchRoute, fetchOsmWidth, osmWidthFromElements, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo, cornerText, cornerDiamond, cornerMapLabel, CORNER_FULL_ZOOM };
+if (typeof module !== 'undefined') module.exports = { fetchRoute, fetchOsmWidth, osmWidthFromElements, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo, cornerText, cornerDiamond, cornerMapLabel, crowdedLabels, CORNER_FULL_ZOOM };

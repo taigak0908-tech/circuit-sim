@@ -25,11 +25,14 @@
 .map-hint{font-size:14px;color:var(--strong);font-weight:700}
 
 /* 地図 */
-.mapbox{border-radius:4px;overflow:hidden}
+.mapbox{border-radius:4px;overflow:hidden;position:relative}
+/* 地図／航空写真の切替は地図の右上に重ねる */
+.map-base{position:absolute;top:10px;right:10px;z-index:1000;gap:0;background:var(--face)}
+.map-base button{min-width:72px}
 #map{height:60vh;min-height:420px;position:relative;z-index:0}
 .leaflet-container{font-family:var(--font-jp);font-size:12px;background:var(--map-ground)}
 /* 夜の地図: OSM 標準を反転して暗い路面の色に寄せる（js/map.js の TILES.dark） */
-.tiles-night{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.82) saturate(.35)}
+.tiles-night{filter:grayscale(1) invert(1) brightness(.78) contrast(.92)}   /* 灰色の暗い地図（道路は明るい灰の線）。経路・ライン・ひし形は別の層なのでかからない */
 .leaflet-bar{border:1px solid var(--line-type)!important;border-radius:0!important;box-shadow:none!important}
 .leaflet-bar a, .leaflet-bar a:hover{background:var(--face);color:var(--strong);border-bottom-color:var(--rule);border-radius:0!important}
 .leaflet-control-attribution{background:var(--ground)!important;color:var(--weak)}
@@ -96,6 +99,7 @@
   .main{order:1}
   #controls{order:2}
   .controls summary .sum-v{display:inline}
+  #sec-info{display:none}   /* 全長とカーブ数はヘッダー帯に出ているので重ねない */
   .res, .res-side{display:contents}
   .main > .verdict{order:0} .main > .map-hint{order:1} .mapbox{order:2} #scrub-grid{order:3} #speed-card{order:4}
   #table-card{order:5} #delta-card{order:6} #state-card{order:7} #gg-card{order:8}
@@ -109,6 +113,7 @@
   .leaflet-touch .leaflet-bar a{width:44px;height:44px;line-height:44px}
 }
 @media (max-width:560px){
+  #sec-hint{display:none}   /* 1画面目に地図を入れるため、区間の操作の説明は省く */
   .wrap{padding-inline:16px}
   .card{padding:12px}
   .table th, .table td{padding-inline:5px}
@@ -122,8 +127,10 @@
       <h1 class="hd-title">走行ライン区間シム</h1>
       <nav class="tabs" aria-label="モード切替"><a href="index.html">1コーナー</a><a href="section.html" aria-current="page">区間</a></nav>
     </div>
-    <p class="hd-name" id="hd-name" hidden></p>
-    <p class="hd-stats" id="hd-stats"></p>
+    <div class="hd-info">
+      <p class="hd-name is-empty" id="hd-name">区間を作ってください</p>
+      <p class="hd-stats" id="hd-stats"></p>
+    </div>
     <div class="hd-end">
       <div class="theme" role="group" aria-label="画面の明るさ"><button type="button" id="theme-day" aria-pressed="false">昼</button><button type="button" id="theme-night" aria-pressed="false">夜</button></div>
       <div class="plate" id="plate" hidden></div>
@@ -145,12 +152,8 @@
             <button type="button" id="btn-via" aria-pressed="false">経由点</button>
             <button type="button" id="btn-clear">全消去</button>
           </div>
-          <button type="button" class="btn sub-btn" id="btn-manual" disabled>手動で道をなぞる</button>
-          <p class="hint">経路が3回続けて取れないとき、手動で道をなぞれます。</p>
-          <div class="seg c2" role="group" aria-label="地図の種類">
-            <button type="button" id="base-osm" aria-pressed="true">地図</button>
-            <button type="button" id="base-aerial" aria-pressed="false">航空写真</button>
-          </div>
+          <button type="button" class="btn sub-btn" id="btn-manual" disabled hidden>手動で道をなぞる</button>
+          <p class="hint" id="sec-hint">経路が3回続けて取れないとき、手動で道をなぞれます。</p>
           <p class="sub" id="sec-info">区間は未設定です</p>
         </div>
       </details>
@@ -183,7 +186,7 @@
       <details id="d-fast" open>
         <summary>最速の探索</summary>
         <div class="grp">
-          <p class="hint">区間・進入速度・車種を変えると、最速のラインを自動で探し直します。</p>
+          <p class="hint">区間、進入速度、車種を変えると、最速のラインを自動で探し直します。</p>
           <progress id="fast-progress" max="1" value="0" hidden></progress>
           <p class="sub" id="fast-status" role="status" aria-live="polite"></p>
           <button type="button" class="btn sub-btn" id="btn-fast" disabled>最速を再探索</button>
@@ -192,7 +195,7 @@
       <details id="d-my" open>
         <summary>自分のライン</summary>
         <div class="grp">
-          <p class="hint" id="my-hint">コーナーを選んで、エイペックスの位置・内への寄せ・入口で外に居続ける距離を動かします。</p>
+          <p class="hint" id="my-hint">コーナーを選んで、エイペックスの位置、内への寄せ、入口で外に居続ける距離を動かします。</p>
           <div class="fld"><label for="my-corner">コーナー</label><select id="my-corner" disabled></select></div>
           <div class="fld"><div class="fld-top"><label for="my-apex">エイペックスの位置（コーナー内 %）</label><output id="my-apex-o" for="my-apex">65</output></div>
             <input type="range" id="my-apex" min="20" max="85" step="1" value="65" disabled></div>
@@ -209,7 +212,7 @@
           <div class="fld"><label for="sec-name">名前</label>
             <div class="inline"><input type="text" id="sec-name" maxlength="40" placeholder="例: 榛名 下り">
               <button type="button" class="btn" id="btn-save">保存</button></div></div>
-          <p class="hint">いまの区間・幅・進入速度・車種・自分のラインをこのブラウザに保存します。同じ名前なら上書きします。</p>
+          <p class="hint">いまの区間、幅、進入速度、車種、自分のラインをこのブラウザに保存します。同じ名前なら上書きします。</p>
           <ul class="sec-list" id="sec-list"></ul>
         </div>
       </details>
@@ -219,7 +222,13 @@
     <div class="main" id="main">
       <section class="verdict" id="verdict" aria-live="polite" hidden></section>
       <p class="map-hint" id="map-hint" role="status">始点を押して、地図で道路をクリック</p>
-      <section class="mapbox" aria-label="区間の地図"><div id="map"></div></section>
+      <section class="mapbox" aria-label="区間の地図">
+        <div id="map"></div>
+        <div class="seg c2 map-base" role="group" aria-label="地図の種類">
+          <button type="button" id="base-osm" aria-pressed="true">地図</button>
+          <button type="button" id="base-aerial" aria-pressed="false">航空写真</button>
+        </div>
+      </section>
       <div class="scrub" id="scrub-grid" hidden>
         <button type="button" class="btn sub-btn" id="play" aria-pressed="false">再生</button>
         <input type="range" id="scrub" min="0" max="100" step="1" value="0" aria-label="区間内の位置">

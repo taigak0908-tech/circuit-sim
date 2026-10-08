@@ -61,6 +61,8 @@ h2{font-size:14px;font-weight:700;line-height:1.4;color:var(--strong)}
 .hd-stats{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--head-weak);font-size:13px}
 .hd-stats b{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:700;font-size:17px;color:var(--head-ink)}
 .hd-lede{color:var(--head-weak);font-size:13px;flex:1 1 16em;min-width:0}
+.hd-info{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 22px;min-width:0}
+.hd-name.is-empty, .sp-only{display:none}   /* PC では「区間を作ってください」などの仮の名前と、スマホ用の要約は出さない */
 .hd-end{margin-left:auto;display:flex;align-items:center;gap:16px}
 .tabs{display:flex;gap:4px}
 .tabs a, .theme button{display:inline-grid;place-items:center;min-height:30px;padding:2px 12px;font:inherit;font-size:13px;font-weight:700;color:var(--head-ink);text-decoration:none;background:transparent;border:1px solid var(--head-line);clip-path:var(--cut);cursor:pointer}
@@ -167,26 +169,31 @@ td.t{font-weight:700;color:var(--strong)}
 /* ---------- スマホ ---------- */
 @media (max-width:980px){
   :root{--tap:44px}
+  /* ヘッダー帯は2行（合計 110px 以内）: 1行目 タブ｜昼夜、2行目 区間名と距離・カーブ数｜黄色い板。アプリ名は読み上げ用にだけ残す */
   .hd{position:sticky;top:0}
-  .hd-in{gap:6px 14px;padding-block:8px}
-  .hd-end{margin-left:0;width:100%;justify-content:space-between}
-  .plate-n{font-size:34px}
-  .plate{padding:4px 14px 4px 26px;white-space:normal;min-width:0;align-items:center}   /* 長いラベルは折り返して、板が画面からはみ出さないようにする */
-  .plate-l{font-size:12px;line-height:1.25;word-break:keep-all}
+  /* 3列にして、1行目（タブ｜昼夜）と2行目（区間名｜黄色い板）の幅が互いに引っぱられないようにする */
+  .hd-in{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"tabs tabs theme" "info plate plate";align-items:center;gap:6px 12px;padding:6px 16px}
+  .hd-id, .hd-end{display:contents}
+  .hd-title{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .tabs{grid-area:tabs}
+  .theme{grid-area:theme;justify-self:end}
+  .tabs a, .theme button{min-height:44px;padding-inline:12px}
+  .hd-lede, .pc-only{display:none}
+  .sp-only{display:block}
+  .hd-info{grid-area:info;display:grid;gap:0;align-items:start}
+  .hd-name, .hd-name.is-empty{display:block;font-size:15px;max-width:none}
+  .hd-name.is-empty{color:var(--head-weak);font-weight:400}
+  .hd-stats{font-size:12px;gap:0 10px;flex-wrap:nowrap;white-space:nowrap}
+  .hd-stats b{font-size:14px}
+  .plate{grid-area:plate;justify-self:end;padding:3px 12px 3px 24px;white-space:normal;min-width:0;align-items:center;gap:6px}   /* 長いラベルは折り返して、板が画面からはみ出さないようにする */
+  .plate-l{font-size:11px;line-height:1.2;word-break:keep-all;max-width:6em}   /* <wbr> の所で2行に折る */
+  .plate-n{font-size:26px}
+  .plate-u{font-size:12px}
   .plate-n, .plate-u{white-space:nowrap}
-  .tabs a, .theme button{min-height:40px}
   .legend button{min-height:44px}
   .controls summary{padding-block:10px}
   .controls > details:not([open]){padding-bottom:8px}
   /* スクロールしたら区間名と黄色い板だけの1行に縮む（js/header.js が .is-shrunk を付ける） */
-  .hd.is-shrunk .hd-id, .hd.is-shrunk .hd-stats, .hd.is-shrunk .hd-lede, .hd.is-shrunk .theme{display:none}
-  .hd.is-shrunk .hd-in{flex-wrap:nowrap;padding-block:4px}
-  .hd.is-shrunk .hd-name{font-size:15px;min-width:0;flex:1}
-  .hd.is-shrunk .hd-end{width:auto;margin-left:auto}
-  /* 区間名がまだ無いときは、縮んだ帯にページの名前を残す（空の帯にしない） */
-  .hd.is-shrunk:not(:has(.hd-name:not([hidden]))) .hd-id{display:flex}
-  .hd.is-shrunk .tabs{display:none}
-  .hd.is-shrunk .hd-id{min-width:0;flex:1}
-  .hd.is-shrunk .hd-title{min-height:40px;line-height:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .hd.is-shrunk .plate-n{font-size:26px}
+  .hd.is-shrunk .hd-in{grid-template-areas:"info plate plate";padding-block:4px}
+  .hd.is-shrunk .tabs, .hd.is-shrunk .theme, .hd.is-shrunk .hd-stats{display:none}
 }

@@ -1,6 +1,6 @@
 const { test, assert } = require('./harness');
 const { buildTrackFromPath } = require('../js/track');
-const { trackToLatLngs, fetchRoute, fetchOsmWidth, osmWidthFromElements, cornerLabel, cornerText, cornerDiamond, cornerMapLabel, CORNER_FULL_ZOOM } = require('../js/map');
+const { trackToLatLngs, fetchRoute, fetchOsmWidth, osmWidthFromElements, cornerLabel, cornerText, cornerDiamond, cornerMapLabel, crowdedLabels, CORNER_FULL_ZOOM } = require('../js/map');
 
 const haversine = (a, b) => {
   const R = 6371000, rad = Math.PI / 180;
@@ -100,12 +100,12 @@ test('fetchOsmWidth: Overpass に data= で POST し、数値を返す／失敗�
   assert.equal(await withFetch(async () => { throw new Error('net'); }, () => fetchOsmWidth(1, 2)), null);
 });
 
-test('cornerMapLabel: ズーム 16 未満はひし形の番号だけ（添える文は空）、16 以上は「右 R38 90°」（重なり対策）', () => {
+test('cornerMapLabel: ズーム 17 未満はひし形の番号だけ（添える文は空）、17 以上は「右 R38 90°」（重なり対策）', () => {
   const c = { no: 1, dir: 'R', rMin: 38, angDeg: 90 };
-  assert.equal(CORNER_FULL_ZOOM, 16);
-  assert.equal(cornerMapLabel(c, 15), '');
-  assert.equal(cornerMapLabel(c, 15.9), '');
-  assert.equal(cornerMapLabel(c, 16), '右 R38 90°');
+  assert.equal(CORNER_FULL_ZOOM, 17);
+  assert.equal(cornerMapLabel(c, 16), '');
+  assert.equal(cornerMapLabel(c, 16.9), '');
+  assert.equal(cornerMapLabel(c, 17), '右 R38 90°');
   assert.equal(cornerMapLabel(c, 18), cornerText(c));
   assert.equal(cornerMapLabel({ no: 21, dir: 'L', rMin: 9.4, angDeg: 120.4 }, 17), '左 R9 120°');
   /* 番号はひし形の中に書く（21 以上も数字のまま） */
@@ -114,4 +114,14 @@ test('cornerMapLabel: ズーム 16 未満はひし形の番号だけ（添える
   /* 文中・選択肢の表示名は従来どおり */
   assert.equal(cornerLabel(c, true), '①右R38 90°');
   assert.equal(cornerLabel({ no: 21, dir: 'L', rMin: 9, angDeg: 120 }), '(21)左R9');
+});
+
+test('crowdedLabels: 画面上で 36px 以内に別のコーナーがあるか、文が出る右側の帯に入るものは文を省く', () => {
+  /* a と b は 20px（近い）、c は遠い、d は c の右 80px・上下 5px（c の文の帯に入る）、e は c の左 80px（c の文には掛からない） */
+  const pts = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 400, y: 400 }, { x: 480, y: 405 }, { x: 320, y: 400 }];
+  assert.deepEqual(crowdedLabels(pts), [true, true, true, false, true]);
+  /* 帯の外（上下 18px 以上）なら重ならない */
+  assert.deepEqual(crowdedLabels([{ x: 0, y: 0 }, { x: 60, y: 40 }]), [false, false]);
+  assert.deepEqual(crowdedLabels([{ x: 0, y: 0 }]), [false]);
+  assert.deepEqual(crowdedLabels([]), []);
 });
