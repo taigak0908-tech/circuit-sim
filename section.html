@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>走行ライン区間シム</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<!-- Leaflet は CDN を使わず同梱（vendor/leaflet-1.9.4。npm leaflet@1.9.4 の dist をそのまま）。同じ github.io の他アプリのデータを外部スクリプトから守るため -->
+<link rel="stylesheet" href="vendor/leaflet-1.9.4/leaflet.css">
 <style>
 /* index.html の <style> をコピー（共通CSSへの切り出しは今回しない）。区間モード固有は末尾 */
 /* レイアウト: 左に操作パネル、右は「結論 → コース図と車両状態 → 比較表 → グラフ」の順に読む計測シート */
@@ -318,7 +319,7 @@ td.t{font-weight:700;font-size:15px}
     </div>
   </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="vendor/leaflet-1.9.4/leaflet.js"></script>
 <script src="js/physics.js"></script>
 <script src="js/track.js"></script>
 <script src="js/lines.js"></script>

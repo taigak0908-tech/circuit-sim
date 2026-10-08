@@ -40,7 +40,7 @@
     npx -y http-server -p 8765
     ```
     を、このフォルダ（またはその親）で実行し、`http://localhost:8765/section.html` を開く
-- 区間モードはネットワークが必要（地図・経路取得）。ビルドは無く、Leaflet は CDN から読む
+- 区間モードはネットワークが必要（地図・経路取得）。ビルドは無く、Leaflet 1.9.4 は `vendor/leaflet-1.9.4/` に同梱（CDN は使わない。同じ github.io に同居する他アプリのデータを外部スクリプトから守るため。上げるときは npm の leaflet の dist を差し替え、フォルダ名と section.html の参照も変える）
 
 ## テスト
 - `npm test`（Node 21 以上（確認は 24）。`node --test` にファイルの glob を渡すため）: `test/*.test.js` を `node --test` で実行する
