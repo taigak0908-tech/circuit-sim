@@ -198,7 +198,7 @@
 
   /* ---------- 描画 ---------- */
   const visibleIds = () => SR.SERIES.map(s => s.id).filter(id => S.visible.has(id));
-  /* CSS 変数（var(--s1)）を実色にする。Leaflet は CSS 変数を使えないため。ダークモードでも呼び直せば追従 */
+  /* CSS 変数（var(--blue) など）を実色にする。Leaflet は CSS 変数を使えないため。昼夜を切り替えたら呼び直せば追従 */
   function cssColor(v) {
     const m = /^var\((--[\w-]+)\)$/.exec(v);
     return m ? (getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() || '#888') : v;
@@ -254,11 +254,13 @@
     if (!ids.length) return;
     const order = ids.filter(id => id !== S.sel).concat(ids.includes(S.sel) ? [S.sel] : []);   // 選択中を最前面に
     api.drawLines(order.map(id => {
-      const se = SR.seriesOf(id);   // 地図でもグラフと同じ線種（中央・型ラインは灰色の線種違い）。昼の黄色の線は縁取りを敷く
+      const se = SR.seriesOf(id);   // 地図でもグラフと同じ線種（中央・型ラインは灰色の線種違い）
+      /* 昼は道路の帯と灰色の線が近い色なので、黄色の線は濃い縁取り、灰色の線は白い縁取りを敷く（夜は透明＝敷かない） */
+      const caseVar = se.cased ? 'var(--yellow-case)' : se.color === 'var(--line-type)' ? 'var(--type-case)' : null;
       return {
         id, latlngs: trackToLatLngs(S.tr, S.results[id].line.n),
         color: cssColor(se.color), weight: id === S.sel ? 5 : se.thin ? 2 : 3, dash: se.dash || null,
-        caseColor: se.cased ? cssColor('var(--yellow-case)') : null
+        caseColor: caseVar ? cssColor(caseVar) : null
       };
     }));
   }

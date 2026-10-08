@@ -7,7 +7,7 @@
 :root, :root[data-theme="day"]{
   --ground:#E6E8EA; --map-ground:#E6E8EA; --face:#FFFFFF; --rule:#D5D8DB;
   --text:#3B3F44; --strong:#000000; --weak:#6B7076;
-  --yellow:#F3B800; --on-yellow:#000000; --yellow-case:#3B3F44;
+  --yellow:#F3B800; --on-yellow:#000000; --yellow-case:#3B3F44; --type-case:#FFFFFF;
   --blue:#1D4E9C; --on-blue:#FFFFFF; --red:#C8102E;
   --line-type:#8A9096; --road:#9AA0A6;
   --head-bg:#1D4E9C; --head-ink:#FFFFFF; --head-weak:#C6D3E8; --head-line:#FFFFFF;
@@ -17,7 +17,7 @@
 @media (prefers-color-scheme: dark){ :root:not([data-theme="day"]){
   --ground:#24282C; --map-ground:#1C1F22; --face:#2C3135; --rule:#3A3F44;
   --text:#C9CDD1; --strong:#FFFFFF; --weak:#8C9399;
-  --yellow:#F3B800; --on-yellow:#000000; --yellow-case:transparent;
+  --yellow:#F3B800; --on-yellow:#000000; --yellow-case:transparent; --type-case:transparent;
   --blue:#5B9BF0; --on-blue:#000000; --red:#F0505E;
   --line-type:#6E757C; --road:#454B51;
   --head-bg:#24282C; --head-ink:#FFFFFF; --head-weak:#8C9399; --head-line:#6E757C;
@@ -26,7 +26,7 @@
 :root[data-theme="night"]{
   --ground:#24282C; --map-ground:#1C1F22; --face:#2C3135; --rule:#3A3F44;
   --text:#C9CDD1; --strong:#FFFFFF; --weak:#8C9399;
-  --yellow:#F3B800; --on-yellow:#000000; --yellow-case:transparent;
+  --yellow:#F3B800; --on-yellow:#000000; --yellow-case:transparent; --type-case:transparent;
   --blue:#5B9BF0; --on-blue:#000000; --red:#F0505E;
   --line-type:#6E757C; --road:#454B51;
   --head-bg:#24282C; --head-ink:#FFFFFF; --head-weak:#8C9399; --head-line:#6E757C;
@@ -60,7 +60,7 @@ h2{font-size:14px;font-weight:700;line-height:1.4;color:var(--strong)}
 .hd-name{font-size:18px;font-weight:700;color:var(--head-ink);line-height:1.3;max-width:22em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hd-stats{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--head-weak);font-size:13px}
 .hd-stats b{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:700;font-size:17px;color:var(--head-ink)}
-.hd-lede{color:var(--head-weak);font-size:13px}
+.hd-lede{color:var(--head-weak);font-size:13px;flex:1 1 16em;min-width:0}
 .hd-end{margin-left:auto;display:flex;align-items:center;gap:16px}
 .tabs{display:flex;gap:4px}
 .tabs a, .theme button{display:inline-grid;place-items:center;min-height:30px;padding:2px 12px;font:inherit;font-size:13px;font-weight:700;color:var(--head-ink);text-decoration:none;background:transparent;border:1px solid var(--head-line);clip-path:var(--cut);cursor:pointer}
@@ -76,15 +76,15 @@ h2{font-size:14px;font-weight:700;line-height:1.4;color:var(--strong)}
 .plate-u{font-size:14px;font-weight:700}
 
 /* ---------- 押せるもの ---------- */
-.btn, .seg button, .tbtn{font:inherit;font-size:13px;line-height:1.3;min-height:var(--tap);padding:6px 12px;border:1px solid var(--line-type);border-radius:0;clip-path:var(--cut);background:transparent;color:var(--strong);cursor:pointer}
+.btn, .seg button{font:inherit;font-size:13px;line-height:1.3;min-height:var(--tap);padding:6px 12px;border:1px solid var(--line-type);border-radius:0;clip-path:var(--cut);background:transparent;color:var(--strong);cursor:pointer}
 .btn{font-weight:700;background:var(--yellow);color:var(--on-yellow);border-color:var(--yellow)}   /* 主操作は黄地に黒文字 */
 .btn.sub-btn{font-weight:400;background:transparent;color:var(--strong);border-color:var(--line-type)}
 .seg button[aria-pressed=true], .btn.sub-btn[aria-pressed=true]{background:var(--blue);color:var(--on-blue);border-color:var(--blue);font-weight:700}
-.btn:hover, .seg button:hover, .tbtn:hover{border-color:var(--strong)}
+.btn:hover, .seg button:hover{border-color:var(--strong)}
 .btn:hover{border-color:var(--on-yellow)}
 .btn:disabled, .seg button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line-type)}
 /* clip-path で外側の outline は切れるので、フォーカスは内側の線で見せる */
-.btn:focus-visible, .seg button:focus-visible, .tbtn:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
+.btn:focus-visible, .seg button:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--blue)}
 .seg button[aria-pressed=true]:focus-visible, .btn.sub-btn[aria-pressed=true]:focus-visible{box-shadow:inset 0 0 0 2px var(--on-blue)}
 .btn:not(.sub-btn):focus-visible{box-shadow:inset 0 0 0 3px var(--on-yellow)}
 summary:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
@@ -171,7 +171,9 @@ td.t{font-weight:700;color:var(--strong)}
   .hd-in{gap:6px 14px;padding-block:8px}
   .hd-end{margin-left:0;width:100%;justify-content:space-between}
   .plate-n{font-size:34px}
-  .plate{padding:4px 14px 4px 26px}
+  .plate{padding:4px 14px 4px 26px;white-space:normal;min-width:0;align-items:center}   /* 長いラベルは折り返して、板が画面からはみ出さないようにする */
+  .plate-l{font-size:12px;line-height:1.25;word-break:keep-all}
+  .plate-n, .plate-u{white-space:nowrap}
   .tabs a, .theme button{min-height:40px}
   .legend button{min-height:44px}
   .controls summary{padding-block:10px}
@@ -182,8 +184,9 @@ td.t{font-weight:700;color:var(--strong)}
   .hd.is-shrunk .hd-name{font-size:15px;min-width:0;flex:1}
   .hd.is-shrunk .hd-end{width:auto;margin-left:auto}
   /* 区間名がまだ無いときは、縮んだ帯にページの名前を残す（空の帯にしない） */
-  .hd.is-shrunk:has(.hd-name[hidden]) .hd-id{display:flex}
+  .hd.is-shrunk:not(:has(.hd-name:not([hidden]))) .hd-id{display:flex}
   .hd.is-shrunk .tabs{display:none}
-  .hd.is-shrunk .hd-title{min-height:40px;display:flex;align-items:center}
+  .hd.is-shrunk .hd-id{min-width:0;flex:1}
+  .hd.is-shrunk .hd-title{min-height:40px;line-height:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .hd.is-shrunk .plate-n{font-size:26px}
 }
