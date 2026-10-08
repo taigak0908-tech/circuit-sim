@@ -24,7 +24,11 @@
     manual: '道に沿って地図を順にクリックします（2点以上で線を引きます）',
     measure: '航空写真の上で、道の左端と右端を順にクリックします'
   };
-  const HINT_IDLE = 'ボタンで点の種類を選び、地図をクリックします';
+  /* ヘッダー帯に出す車の短い名前 */
+  const CAR_SHORT = { grb: 'GRB', gr86: 'GR86', nd: 'ND', fl5: 'FL5', gry: 'GRヤリス', custom: 'カスタム' };
+  /* スマホ幅（css の @media (max-width:980px) と同じ境目）。表を3列にし、設定をたたむ */
+  const narrowMq = window.matchMedia ? window.matchMedia('(max-width: 980px)') : null;
+  const isNarrow = () => !!(narrowMq && narrowMq.matches);
 
   /* 状態。mode は null | 'start' | 'end' | 'via' | 'manual' | 'measure' */
   const S = {
@@ -50,7 +54,8 @@
     visible: new Set(['center', 'my', 'fast']),   // 表示中の系列
     failCount: 0,
     seq: 0,              // 経路取得の通し番号（古い応答を捨てる）
-    pendingRestore: null // 保存区間の復元待ち {params, paramsEdited, total}。区間ができたとき（再試行で後からできても）当てて消す
+    pendingRestore: null, // 保存区間の復元待ち {params, paramsEdited, total}。区間ができたとき（再試行で後からできても）当てて消す
+    name: ''             // ヘッダー帯に出す区間名（保存・読み込みした名前。点を置き直したら消す）
   };
 
   if (typeof L === 'undefined') {
@@ -90,9 +95,18 @@
     if (m === 'measure') { setBase('aerial'); showMsg('道の左端と右端をクリックしてください', { info: true }); }
     else if (prev === 'measure') showMsg(null);
     Object.keys(MODE_BTN).forEach(k => $(MODE_BTN[k]).setAttribute('aria-pressed', String(k === m)));
-    $('map-hint').textContent = m ? HINTS[m] : HINT_IDLE;
+    updateHint();
     api.map.getContainer().style.cursor = m ? 'crosshair' : '';
     updateManualBtn();
+  }
+  /* 地図の上の1行。点を置いているときはその案内、区間が無いときは次にすることを1行で。区間ができたら消す */
+  function updateHint() {
+    const el = $('map-hint');
+    const t = S.mode ? HINTS[S.mode]
+      : S.manual || S.tr ? ''
+        : !S.points.start ? '始点を押して、地図で道路をクリック'
+          : !S.points.end ? '終点を押して、地図で道路をクリック' : '';
+    el.textContent = t; el.hidden = !t;
   }
   function updateManualBtn() { $('btn-manual').disabled = !(S.failCount >= 3 || S.mode === 'manual'); }
   function toggleMode(m) { setMode(S.mode === m ? null : m); }
@@ -191,13 +205,25 @@
   }
   let speedCtx = null, deltaCtx = null, ggCtx = null;
 
+  /* 判定の1行（地図の上）と、ヘッダー帯の黄色い板 */
   function renderVerdict() {
-    $('verdict').innerHTML = SR.verdictHtml(SR.verdictInfo(S.results, S.tr));
+    const info = SR.verdictInfo(S.results, S.tr);
+    $('verdict').innerHTML = SR.verdictHtml(info);
+    $('plate').innerHTML = SR.plateHtml(info);
     if (fastRunning()) {
-      const p = document.createElement('p'); p.className = 'sub';
+      const p = document.createElement('p'); p.className = 'note';
       p.textContent = '最速を探索中です。いまの値は仮のもの（型ラインで最も速いもの）で、探索が終わると差し替わります。';
-      $('verdict').querySelector('.v-text').appendChild(p);
+      $('verdict').appendChild(p);
     }
+  }
+  /* ヘッダー帯（区間名・距離・カーブ数・車・幅）と、たたんだ設定の見出しに添える今の値 */
+  function renderHeader() {
+    const nm = $('hd-name'); nm.textContent = S.name; nm.hidden = !S.name;
+    const car = CAR_SHORT[S.preset] || CAR_SHORT.custom, b = x => '<b>' + x + '</b>';
+    $('hd-stats').innerHTML = (S.tr ? '<span>' + b((S.tr.total / 1000).toFixed(2)) + ' km</span><span>' + b(S.tr.corners.length) + ' カーブ</span>' : '') +
+      '<span>' + b(car) + '</span><span>幅 ' + b(S.W.toFixed(1)) + ' m</span>';
+    $('sum-road').textContent = '（幅 ' + S.W.toFixed(1) + ' m・' + (S.laneMode === 'lane' ? '片側のみ' : '全幅') + '）';
+    $('sum-car').textContent = '（' + car + '）';
   }
   function renderLegend() {
     const el = $('legend');
@@ -205,7 +231,7 @@
     el.querySelectorAll('input[data-vis]').forEach(i => { i.checked = S.visible.has(i.dataset.vis); });
     el.querySelectorAll('button[data-sel]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sel === S.sel)));
   }
-  function renderTable() { $('table').innerHTML = SR.tableHtml(S.tr, S.results, visibleIds(), S.sel, S.selCorner); }
+  function renderTable() { $('table').innerHTML = SR.tableHtml(S.tr, S.results, visibleIds(), S.sel, S.selCorner, isNarrow()); }
   function renderSpeed() {
     const el = $('speed');
     speedCtx = SR.speedPlot(el.clientWidth || 600, el.clientHeight || 260, S.tr, S.results, visibleIds(), S.sel);
@@ -227,18 +253,23 @@
     const ids = visibleIds();
     if (!ids.length) return;
     const order = ids.filter(id => id !== S.sel).concat(ids.includes(S.sel) ? [S.sel] : []);   // 選択中を最前面に
-    api.drawLines(order.map(id => ({
-      id, latlngs: trackToLatLngs(S.tr, S.results[id].line.n),
-      color: cssColor(SR.seriesOf(id).color), weight: id === S.sel ? 5 : 3
-    })));
+    api.drawLines(order.map(id => {
+      const se = SR.seriesOf(id);   // 地図でもグラフと同じ線種（中央・型ラインは灰色の線種違い）。昼の黄色の線は縁取りを敷く
+      return {
+        id, latlngs: trackToLatLngs(S.tr, S.results[id].line.n),
+        color: cssColor(se.color), weight: id === S.sel ? 5 : se.thin ? 2 : 3, dash: se.dash || null,
+        caseColor: se.cased ? cssColor('var(--yellow-case)') : null
+      };
+    }));
   }
   function renderAll() {
     const ok = !!(S.tr && S.results);
-    ['verdict', 'legend', 'table-card', 'speed-card', 'delta-card', 'scrub-grid'].forEach(id => { $(id).hidden = !ok; });
+    ['verdict', 'plate', 'legend', 'table-card', 'speed-card', 'delta-card', 'scrub-grid', 'res-grid'].forEach(id => { $(id).hidden = !ok; });
     $('btn-fast').disabled = !S.tr;
+    renderHeader(); updateHint();
     if (!ok) {
       api.clearLines(); api.setCar(null); stopPlay(); speedCtx = deltaCtx = ggCtx = null;
-      ['verdict', 'table', 'speed', 'delta', 'gg', 'state'].forEach(id => { $(id).innerHTML = ''; });
+      ['verdict', 'plate', 'table', 'speed', 'delta', 'gg', 'state', 'pos-text'].forEach(id => { $(id).innerHTML = ''; });
       return;
     }
     renderVerdict(); renderLegend(); renderTable(); renderSpeed(); renderDelta(); renderGG(); renderMapLines();
@@ -271,7 +302,7 @@
     if (!S.tr || !S.results) return;
     const R = S.results[S.sel], i = S.scrub;
     $('scrub').value = i;
-    $('pos-text').textContent = SR.posText(S.tr, i);
+    $('pos-text').innerHTML = SR.posHtml(S.tr, i, R.sim.v[i] * 3.6);
     updateCross('speed', speedCtx); updateCross('delta', deltaCtx);
     api.setCar(xyToLatLng(R.line.px[i], R.line.py[i], S.tr.origin));
     $('state').innerHTML = SR.stateHtml(S.car, R.sim, i);
@@ -459,7 +490,7 @@
     ++S.seq; S.pendingRestore = null;
     S.points = { start: null, end: null, vias: [] };
     S.manualPts = []; S.manual = false;
-    clearRouteView(); api.setMarkers(null); showMsg(null); setMode(null);
+    S.name = ''; clearRouteView(); api.setMarkers(null); showMsg(null); setMode(null);
   }
 
   /* ---------- 地図クリック ---------- */
@@ -484,7 +515,7 @@
       return;
     }
     if (S.manual) { S.manual = false; clearRouteView(); }   // 手動の線を捨てて通常モードに戻る
-    S.pendingRestore = null;   // 点を動かしたら、読み込みに失敗した保存区間の復元はもう当てない
+    S.pendingRestore = null; S.name = '';   // 点を動かしたら、読み込みに失敗した保存区間の復元はもう当てない（保存した区間とは別になるので区間名も消す）
     if (m === 'start') S.points.start = p;
     else if (m === 'end') S.points.end = p;
     else S.points.vias.push(p);
@@ -500,7 +531,7 @@
   $('btn-measure').addEventListener('click', () => toggleMode('measure'));
   $('btn-manual').addEventListener('click', () => {
     if (S.mode === 'manual') { setMode(null); return; }
-    S.manualPts = []; S.manual = true; ++S.seq; S.pendingRestore = null;   // 手動は新しい線から始める
+    S.manualPts = []; S.manual = true; ++S.seq; S.pendingRestore = null; S.name = '';   // 手動は新しい線から始める
     clearRouteView(); updateMarkers(); showMsg(null);
     setMode('manual');
   });
@@ -516,13 +547,13 @@
 
   $('f-W').addEventListener('input', e => {
     S.W = parseFloat(e.target.value); $('o-W').textContent = S.W.toFixed(1);
-    rebuildTrack(false);
+    rebuildTrack(false); renderHeader();
   });
   function setLaneMode(m) {
     S.laneMode = m;
     $('mode-full').setAttribute('aria-pressed', String(m === 'full'));
     $('mode-lane').setAttribute('aria-pressed', String(m === 'lane'));
-    rebuildTrack(false);
+    rebuildTrack(false); renderHeader();
   }
   $('mode-full').addEventListener('click', () => setLaneMode('full'));
   $('mode-lane').addEventListener('click', () => setLaneMode('lane'));
@@ -534,11 +565,11 @@
   $('f-preset').addEventListener('change', e => {
     const k = e.target.value; S.preset = k;
     if (CAR_PRESETS[k]) { S.carP = Object.assign({}, CAR_PRESETS[k].v); $('f-drive').value = S.carP.drive; }
-    S.car = deriveCar(S.carP); schedule();
+    S.car = deriveCar(S.carP); schedule(); renderHeader();
   });
   $('f-drive').addEventListener('change', e => {
     S.carP.drive = e.target.value; S.preset = 'custom'; $('f-preset').value = 'custom';
-    S.car = deriveCar(S.carP); schedule();
+    S.car = deriveCar(S.carP); schedule(); renderHeader();
   });
 
   /* 最速の探索・自分のライン */
@@ -578,7 +609,8 @@
   });
   bindPlot('speed', () => speedCtx, SR.tipHtml);
   bindPlot('delta', () => deltaCtx, SR.deltaTipHtml);
-  /* 横幅が変わったらグラフを描き直す／配色（ダークモード）が変わったら地図の線の色を取り直す */
+  /* 横幅が変わったらグラフを描き直す／昼夜を切り替えたら地図のタイル・道路の帯・線・車の色を取り直す
+     （グラフ・G-G・荷重の SVG は CSS 変数で塗っているので、そのまま新しい色になる） */
   if (typeof ResizeObserver !== 'undefined') {
     let lastW = $('main').clientWidth, rT = 0;
     new ResizeObserver(() => {
@@ -586,7 +618,15 @@
       clearTimeout(rT); rT = setTimeout(() => { if (S.tr && S.results) { renderSpeed(); renderDelta(); renderGG(); updateScrub(); } }, 120);
     }).observe($('main'));
   }
-  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.tr && S.results) renderMapLines(); });
+  document.addEventListener('themechange', () => {
+    api.refreshTheme();
+    if (S.tr && S.results) { renderSpeed(); renderDelta(); renderGG(); renderMapLines(); updateScrub(); }
+  });
+  /* スマホ幅との境目をまたいだら、表を3列／全列に切り替える */
+  if (narrowMq) {
+    const onNarrow = () => { if (S.tr && S.results) renderTable(); };
+    if (narrowMq.addEventListener) narrowMq.addEventListener('change', onNarrow); else if (narrowMq.addListener) narrowMq.addListener(onNarrow);
+  }
 
   /* ---------- 区間の保存・一覧・読み込み・削除（store.js） ---------- */
   function renderSaved() {
@@ -619,7 +659,7 @@
     });
     renderSaved();
     if (id == null) showMsg('保存できませんでした（ブラウザの保存領域が使えません）');
-    else showMsg('保存しました', { info: true });
+    else { S.name = name; renderHeader(); showMsg('保存しました', { info: true }); }
   }
   async function openSaved(id) {
     const d = sectionStore.getSection(id);
@@ -633,7 +673,7 @@
     S.preset = CAR_PRESETS[d.preset] || (d.preset === 'custom' && d.carP) ? d.preset : 'grb';   // 不明な車種は GRB に戻す
     S.carP = Object.assign({}, CAR_PRESETS[S.preset] ? CAR_PRESETS[S.preset].v : d.carP);
     S.car = deriveCar(S.carP); $('f-preset').value = S.preset; $('f-drive').value = S.carP.drive;
-    $('sec-name').value = d.name;
+    $('sec-name').value = d.name; S.name = d.name; renderHeader();
     /* 自分のラインと全長の警告は、区間ができたときに当てる（経路の取得に失敗しても、再試行で成功したときに当たる） */
     S.pendingRestore = { params: Array.isArray(d.params) ? d.params.map(p => Object.assign({}, p)) : null, paramsEdited: !!d.paramsEdited, total: +d.total || 0 };
     if (d.manual) {
@@ -653,7 +693,10 @@
     else { sectionStore.deleteSection(b.dataset.id); renderSaved(); }   // 個人用ツールなので確認なしで削除
   });
 
+  /* スマホ幅では、区間の操作のほかの設定はたたんで始める（見出しに今の値が出る） */
+  if (isNarrow()) ['d-road', 'd-car', 'd-fast', 'd-my', 'd-save'].forEach(id => { $(id).open = false; });
   setMode(null);
   syncMyUI(true);
   renderSaved();
+  renderHeader();
 })();

@@ -3,23 +3,35 @@
    index.html の frame / tickStep / renderSpeed / renderVerdict / renderTable を区間モード用に改変したコピー
    （計画上の意図的な重複。数式や配色を変えるときは両方そろえる）。 */
 const SectionRender = (function () {
-  const M = typeof module !== 'undefined' ? require('./map') : { cornerLabel, cornerNo: _cornerNo };
+  const M = typeof module !== 'undefined' ? require('./map') : { cornerLabel, cornerNo: _cornerNo, cornerText, cornerDiamond };
   const P = typeof module !== 'undefined' ? require('./physics') : { G, tireState };
   const MINUS = '−';
   /* 符号付き。丸めて 0 になるときは ± にする（−0.00 を出さない） */
   const sgn = (x, d) => { const r = +x.toFixed(d); return (r > 0 ? '+' : r < 0 ? MINUS : '±') + Math.abs(r).toFixed(d); };
   const clampI = (x, a, b) => Math.max(a, Math.min(b, x));
 
+  /* 色が付くのは「最速（黄）」と「自分（青）」だけ。中央と型ラインは灰色で、線種（dash）で見分ける。
+     thin = 細い線（中央）、cased = 昼の白地では下に縁取りを敷く（黄色の線）。地図・グラフ・凡例で同じ線種にする */
   const SERIES = [
-    { id: 'center', name: '中央', color: 'var(--ink2)' },
-    { id: 'oio', name: '全アウトインアウト', color: 'var(--s1)' },
-    { id: 'late', name: '全レイトエイペックス', color: 'var(--s2)' },
-    { id: 'inside', name: '全インベタ', color: 'var(--s4)' },
-    { id: 'my', name: '自分のライン', color: 'var(--s5)' },
-    { id: 'fast', name: '最速', color: 'var(--accent)' }
+    { id: 'center', name: '中央', color: 'var(--line-type)', dash: '', thin: true },
+    { id: 'oio', name: '全アウトインアウト', color: 'var(--line-type)', dash: '6 3' },
+    { id: 'late', name: '全レイトエイペックス', color: 'var(--line-type)', dash: '2 3' },
+    { id: 'inside', name: '全インベタ', color: 'var(--line-type)', dash: '8 3 2 3' },
+    { id: 'my', name: '自分のライン', color: 'var(--blue)', dash: '' },
+    { id: 'fast', name: '最速', color: 'var(--yellow)', dash: '', cased: true }
   ];
   const seriesOf = id => SERIES.find(s => s.id === id);
   const EPS_T = 0.005;   // 秒。これ未満の差は「差なし」として扱う
+
+  /* 線の見た目の属性（色・太さ・線種）。w = 太さ(px) */
+  const strokeOf = (s, w) => 'stroke="' + s.color + '" stroke-width="' + w + '"' + (s.dash ? ' stroke-dasharray="' + s.dash + '" stroke-linecap="butt"' : ' stroke-linecap="round"');
+  /* 凡例・表・ツールチップの線種の見本（小さな SVG） */
+  function keyHtml(s) {
+    const w = s.thin ? 1.5 : 2.5;
+    return '<svg class="key" viewBox="0 0 26 8" aria-hidden="true">' +
+      (s.cased ? '<line x1="1" x2="25" y1="4" y2="4" stroke="var(--yellow-case)" stroke-width="' + (w + 2.5) + '"/>' : '') +
+      '<line x1="1" x2="25" y1="4" y2="4" ' + strokeOf(s, w) + '/></svg>';
+  }
 
   /* ---------- 判定カード ---------- */
   /* 最速と中央の差、コーナーごとの差で最も縮んだコーナーを返す（純粋）。
@@ -37,21 +49,22 @@ const SectionRender = (function () {
     return { straight: false, time, delta, worst };
   }
 
+  /* 判定の1行（ヘッダー帯の下）。最速と中央の差そのものは黄色い板（plateHtml）が受け持つ */
   function verdictText(info) {
     const sec = x => '<span class="num">' + sgn(x, 2) + '秒</span>';
     if (info.straight) return '<p>ほぼ直線のため、ラインによる差はありません。区間タイム <strong class="num">' + info.time.toFixed(2) + ' 秒</strong></p>';
-    let t;
-    if (Math.abs(info.delta) < EPS_T) t = '最速は中央とほぼ同じタイムです。';
-    else if (info.delta < 0) t = '最速は中央より <strong>' + sgn(info.delta, 2) + '秒</strong>。';
-    else t = '最速は中央より <strong>' + sgn(info.delta, 2) + '秒</strong>（中央のほうが速いライン）。';
+    let t = '最速の区間タイム <strong class="num">' + info.time.toFixed(2) + ' 秒</strong>。';
+    if (info.delta >= EPS_T) t += '中央のほうが速いラインです。';
     if (info.worst) t += '差が最も大きいのは <strong>' + info.worst.label + '</strong>（' + sec(info.worst.d) + '）。';
     return '<p>' + t + '</p>';
   }
+  function verdictHtml(info) { return verdictText(info); }
 
-  function verdictHtml(info) {
-    const s = seriesOf('fast');
-    return '<div style="display:grid;gap:4px"><div class="eyebrow">この区間のタイム</div><div class="v-name"><span class="key" style="background:' + s.color + '"></span>' + s.name + '</div>' +
-      '<div class="v-time">' + info.time.toFixed(2) + '<small>秒</small></div></div><div class="v-text">' + verdictText(info) + '</div>';
+  /* 最速との差の黄色い板の中身（ラベル・斜体の大きな数字・単位）。ほぼ直線なら区間タイムを載せる */
+  function plateHtml(info) {
+    const box = (l, n) => '<span class="plate-l">' + l + '</span><span class="plate-n">' + n + '</span><span class="plate-u">秒</span>';
+    if (info.straight) return box('区間タイム', info.time.toFixed(2));
+    return box('最速は中央より', sgn(info.delta, 2));
   }
 
   /* ---------- 凡例（チェックボックス＋選択ボタン） ---------- */
@@ -60,7 +73,7 @@ const SectionRender = (function () {
   function legendHtml() {
     return SERIES.map(s =>
       '<span class="lg"><input type="checkbox" data-vis="' + s.id + '" aria-label="' + s.name + 'を表示">' +
-      '<button type="button" data-sel="' + s.id + '" aria-pressed="false"><span class="key" style="background:' + s.color + '"></span>' + s.name + '</button></span>').join('') +
+      '<button type="button" data-sel="' + s.id + '" aria-pressed="false">' + keyHtml(s) + s.name + '</button></span>').join('') +
       '<span class="lg-note">' + LEGEND_NOTE + '</span>';
   }
 
@@ -73,25 +86,42 @@ const SectionRender = (function () {
 
   /* ---------- コーナー表 ----------
      ids = 表示する系列 id の配列（SERIES の順）。selId = 強調する系列、selCorner = 選ばれている行（無ければ -1） */
-  function tableHtml(tr, results, ids, selId, selCorner) {
+  /* compact=true はスマホ幅用: 系列の選択によらず「最低（最速のライン）・最速・自分」の3列だけにする */
+  function tableHtml(tr, results, ids, selId, selCorner, compact) {
     const cols = ids.map(id => seriesOf(id));
     const cls = id => (id === selId ? ' selcol' : '');
-    let h = '<table class="table"><thead><tr><th scope="col" rowspan="2">コーナー</th>' +
-      cols.map(s => '<th scope="colgroup" colspan="2" class="sg' + cls(s.id) + '"' + '><span class="key" style="background:' + s.color + '"></span> ' + s.name + '</th>').join('') + '<th scope="col" rowspan="2">詳しく</th></tr><tr>' +
-      cols.map(s => '<th scope="col" class="' + cls(s.id).trim() + '">最低 km/h</th><th scope="col" class="' + cls(s.id).trim() + '">通過 s</th>').join('') + '</tr></thead><tbody>';
-    tr.corners.forEach((k, c) => {
-      h += '<tr data-c="' + c + '"' + (c === selCorner ? ' class="pick" aria-current="true"' : '') + '><td><button type="button" class="cbtn">' + M.cornerLabel(k, true) + '</button></td>' +
-        cols.map(s => {
-          const st = results[s.id].stats[c];
-          return '<td class="' + cls(s.id).trim() + '">' + (st.vMin * 3.6).toFixed(1) + '</td><td class="' + cls(s.id).trim() + '">' + st.tCorner.toFixed(2) + '</td>';
-        }).join('') + '<td><a class="btn-sm" target="_blank" rel="noopener" href="' + cornerLinkUrl(k, results.center.sim.v[k.i0], tr.W) + '">1コーナーで詳しく</a></td></tr>';
-    });
     const t0 = results.center.sim.time;
-    h += '<tr class="total"><td>区間合計</td>' + cols.map(s => {
-      const t = results[s.id].sim.time;
-      return '<td colspan="2" class="t' + cls(s.id) + '">' + t.toFixed(2) + ' <span class="sub">' + (s.id === 'center' ? '基準' : sgn(t - t0, 2)) + '</span></td>';
-    }).join('') + '<td></td></tr></tbody></table>';
-    if (tr.corners.length) h += '<p class="hint">「1コーナーで詳しく」は、そのコーナーの条件（入口の速度は中央ライン）を 1コーナー比較へ渡して新しいタブで開きます。1コーナー比較は半径 5〜200 m・幅 3〜16 m・入口速度 20〜220 km/h の範囲なので、外れている値は端の値になります。</p>';
+    /* 中央との差。遅くなる（＋）ときだけ赤（規制標識の色） */
+    const diff = t => { const d = sgn(t - t0, 2); return '<span class="' + (d[0] === '+' ? 'slow' : 'sub') + '">' + d + '</span>'; };
+    const cornerCell = k => '<td><button type="button" class="cbtn">' + M.cornerDiamond(k.no) + '<span>' + M.cornerText(k) + '</span></button></td>';
+    const linkCell = k => '<td><a class="btn-sm" target="_blank" rel="noopener" href="' + cornerLinkUrl(k, results.center.sim.v[k.i0], tr.W) + '"><span class="sr-only">1コーナーで</span>詳しく</a></td>';
+    const rowOpen = c => '<tr data-c="' + c + '"' + (c === selCorner ? ' class="pick" aria-current="true"' : '') + '>';
+    let h;
+    if (compact) {
+      const F = results.fast, Y = results.my;
+      h = '<table class="table compact"><thead><tr><th scope="col">コーナー</th><th scope="col">最低 km/h<span class="sr-only">（最速のライン）</span></th>' +
+        '<th scope="col">' + keyHtml(seriesOf('fast')) + ' 最速 s</th><th scope="col">' + keyHtml(seriesOf('my')) + ' 自分 s</th><th scope="col"><span class="sr-only">1コーナーで</span>詳しく</th></tr></thead><tbody>';
+      tr.corners.forEach((k, c) => {
+        h += rowOpen(c) + cornerCell(k) + '<td>' + (F.stats[c].vMin * 3.6).toFixed(1) + '</td><td>' + F.stats[c].tCorner.toFixed(2) + '</td><td>' + Y.stats[c].tCorner.toFixed(2) + '</td>' + linkCell(k) + '</tr>';
+      });
+      h += '<tr class="total"><td>区間合計</td><td></td><td class="t">' + F.sim.time.toFixed(2) + '</td><td class="t">' + Y.sim.time.toFixed(2) + ' ' + diff(Y.sim.time) + '</td><td></td></tr></tbody></table>';
+    } else {
+      h = '<table class="table"><thead><tr><th scope="col" rowspan="2">コーナー</th>' +
+        cols.map(s => '<th scope="colgroup" colspan="2" class="sg' + cls(s.id) + '"' + '>' + keyHtml(s) + ' ' + s.name + '</th>').join('') + '<th scope="col" rowspan="2">詳しく</th></tr><tr>' +
+        cols.map(s => '<th scope="col" class="' + cls(s.id).trim() + '">最低 km/h</th><th scope="col" class="' + cls(s.id).trim() + '">通過 s</th>').join('') + '</tr></thead><tbody>';
+      tr.corners.forEach((k, c) => {
+        h += rowOpen(c) + cornerCell(k) +
+          cols.map(s => {
+            const st = results[s.id].stats[c];
+            return '<td class="' + cls(s.id).trim() + '">' + (st.vMin * 3.6).toFixed(1) + '</td><td class="' + cls(s.id).trim() + '">' + st.tCorner.toFixed(2) + '</td>';
+          }).join('') + linkCell(k) + '</tr>';
+      });
+      h += '<tr class="total"><td>区間合計</td>' + cols.map(s => {
+        const t = results[s.id].sim.time;
+        return '<td colspan="2" class="t' + cls(s.id) + '">' + t.toFixed(2) + ' ' + (s.id === 'center' ? '<span class="sub">基準</span>' : diff(t)) + '</td>';
+      }).join('') + '<td></td></tr></tbody></table>';
+    }
+    if (tr.corners.length) h += '<p class="hint">「詳しく」は、そのコーナーの条件（入口の速度は中央ライン）を 1コーナー比較へ渡して新しいタブで開きます。1コーナー比較は半径 5〜200 m・幅 3〜16 m・入口速度 20〜220 km/h の範囲なので、外れている値は端の値になります。</p>';
     return h;
   }
 
@@ -99,13 +129,23 @@ const SectionRender = (function () {
   function tickStep(span, n) { const raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
   function tickList(lo, hi, step) { const out = []; for (let t = Math.ceil(lo / step - 1e-9) * step; t <= hi + 1e-9; t += step) out.push(+t.toFixed(8)); return out; }
   /* 枡・軸・帯を描く。w,h = 描画サイズ(px)。返す x(), y() はデータ値 → px */
+  /* ひし形の標識（SVG）。cx,cy = 中心。20px 角を 45° 回して番号を中に書く（HTML の .dia と同じ形） */
+  const diaSvg = (cx, cy, no) => '<g transform="translate(' + cx.toFixed(1) + ' ' + cy + ')"><rect x="-10" y="-10" width="20" height="20" rx="2" transform="rotate(45)" fill="var(--yellow)" stroke="#000" stroke-width="1.2"/>' +
+    '<text class="dia-t" y="4" text-anchor="middle">' + no + '</text></g>';
+  /* bands = [{x0, x1, no}]（カーブ区間）。黄色の薄い帯を敷き、上の余白にひし形の番号を置く（隣と重なるときは省く） */
   function frame(w, h, o) {
-    const m = { l: 46, r: 14, t: 12, b: 36 };
+    const bands = o.bands || [];
+    const m = { l: 46, r: 14, t: bands.length && o.marks !== false ? 36 : 12, b: 36 };
     const x = v => m.l + (v - o.xd[0]) / (o.xd[1] - o.xd[0]) * (w - m.l - m.r), y = v => h - m.b - (v - o.yd[0]) / (o.yd[1] - o.yd[0]) * (h - m.t - m.b);
     let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="' + o.aria + '">';
-    (o.bands || []).forEach(b => { s += '<rect x="' + x(b.x0) + '" y="' + m.t + '" width="' + Math.max(1, x(b.x1) - x(b.x0)) + '" height="' + (h - m.t - m.b) + '" fill="var(--ink)" opacity="0.05"/><text class="jp" x="' + (x(b.x0) + x(b.x1)) / 2 + '" y="' + (m.t + 13) + '" text-anchor="middle">' + b.label + '</text>'; });
-    o.yt.forEach(t => { s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="' + (o.zero && t === 0 ? 'var(--axis)' : 'var(--grid)') + '"/><text x="' + (m.l - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + o.yf(t) + '</text>'; });
-    s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + (h - m.b) + '" y2="' + (h - m.b) + '" stroke="var(--axis)"/>';
+    let lastX = -Infinity;
+    bands.forEach(b => {
+      s += '<rect x="' + x(b.x0) + '" y="' + m.t + '" width="' + Math.max(1, x(b.x1) - x(b.x0)) + '" height="' + (h - m.t - m.b) + '" style="fill:var(--yellow);fill-opacity:var(--band-op)"/>';
+      const cx = (x(b.x0) + x(b.x1)) / 2;
+      if (o.marks !== false && cx - lastX >= 30) { s += diaSvg(cx, 16, b.no); lastX = cx; }
+    });
+    o.yt.forEach(t => { s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="' + (o.zero && t === 0 ? 'var(--line-type)' : 'var(--rule)') + '"/><text x="' + (m.l - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + o.yf(t) + '</text>'; });
+    s += '<line x1="' + m.l + '" x2="' + (w - m.r) + '" y1="' + (h - m.b) + '" y2="' + (h - m.b) + '" stroke="var(--line-type)"/>';
     o.xt.forEach(t => { s += '<text x="' + x(t) + '" y="' + (h - m.b + 16) + '" text-anchor="middle">' + o.xf(t) + '</text>'; });
     s += '<text class="jp" x="' + (w - m.r) + '" y="' + (h - 4) + '" text-anchor="end">' + o.xtitle + '</text>';
     return { s, x, y, w, h, m };
@@ -117,10 +157,14 @@ const SectionRender = (function () {
     const stride = Math.max(1, Math.floor(tr.N / 1500));
     const poly = id => { const p = []; for (let i = 0; i < tr.N; i += stride) p.push(fr.x(tr.st[i]).toFixed(1) + ',' + fr.y(valOf(id, i)).toFixed(1)); if ((tr.N - 1) % stride) p.push(fr.x(tr.st[tr.N - 1]).toFixed(1) + ',' + fr.y(valOf(id, tr.N - 1)).toFixed(1)); return p.join(' '); };
     let s = fr.s;
-    const draw = id => { s += '<polyline points="' + poly(id) + '" fill="none" stroke="' + seriesOf(id).color + '" stroke-width="' + (id === selId ? 2.6 : 1.8) + '" stroke-linejoin="round" stroke-linecap="round"/>'; };
+    const draw = id => {
+      const se = seriesOf(id), w = id === selId ? 2.6 : se.thin ? 1.2 : 1.8, pts = poly(id);
+      if (se.cased) s += '<polyline points="' + pts + '" fill="none" stroke="var(--yellow-case)" stroke-width="' + (w + 2.4) + '" stroke-linejoin="round" stroke-linecap="round"/>';
+      s += '<polyline points="' + pts + '" fill="none" ' + strokeOf(se, w) + ' stroke-linejoin="round"/>';
+    };
     ids.filter(id => id !== selId).forEach(draw); if (ids.includes(selId)) draw(selId);
-    return s + '<g id="' + prefix + '-h"><line id="' + prefix + '-x" y1="' + fr.m.t + '" y2="' + (fr.h - fr.m.b) + '" stroke="var(--ink2)" stroke-width="1"/>' +
-      ids.map(id => '<circle id="' + prefix + '-d-' + id + '" r="' + (id === selId ? 5 : 4) + '" fill="' + seriesOf(id).color + '" stroke="var(--surface)" stroke-width="2"/>').join('') + '</g>';
+    return s + '<g id="' + prefix + '-h"><line id="' + prefix + '-x" y1="' + fr.m.t + '" y2="' + (fr.h - fr.m.b) + '" stroke="var(--strong)" stroke-width="1"/>' +
+      ids.map(id => '<circle id="' + prefix + '-d-' + id + '" r="' + (id === selId ? 5 : 4) + '" fill="' + seriesOf(id).color + '" stroke="var(--face)" stroke-width="2"/>').join('') + '</g>';
   }
 
   /* 速度グラフ一式。戻り値 {html, fr, xd, ids, val}。位置表示用の縦線と点（#speed-x / #speed-d-<id>）と #speed-tip 入り。
@@ -135,7 +179,7 @@ const SectionRender = (function () {
     const fr = frame(w, h, {
       xd, yd, xt: tickList(xd[0], xd[1], xs), yt: tickList(yd[0], yd[1], ys), xf: t => String(Math.round(t)), yf: t => t.toFixed(0),
       xtitle: '区間の距離（m）', aria: '各ラインの速度の推移',
-      bands: tr.corners.map(k => ({ x0: k.s0, x1: k.s1, label: M.cornerNo(k.no) }))
+      bands: tr.corners.map(k => ({ x0: k.s0, x1: k.s1, no: k.no }))
     });
     const val = (id, i) => results[id].sim.v[i] * 3.6;
     return { html: lines(fr, tr, ids, selId, val, 'speed') + '</svg><div class="tip" id="speed-tip" hidden></div>', fr, xd, ids, val };
@@ -145,7 +189,7 @@ const SectionRender = (function () {
   function tipHtml(tr, results, ids, selId, i) {
     return '<b>距離 ' + Math.round(tr.st[i]) + ' m</b>' + ids.map(id => {
       const s = seriesOf(id);
-      return '<div class="row"' + (id === selId ? ' style="font-weight:700"' : '') + '><span class="key" style="background:' + s.color + '"></span>' + s.name + '<span class="v">' + (results[id].sim.v[i] * 3.6).toFixed(1) + ' km/h</span></div>';
+      return '<div class="row"' + (id === selId ? ' style="font-weight:700"' : '') + '>' + keyHtml(s) + '' + s.name + '<span class="v">' + (results[id].sim.v[i] * 3.6).toFixed(1) + ' km/h</span></div>';
     }).join('');
   }
 
@@ -167,8 +211,8 @@ const SectionRender = (function () {
     const xd = [0, tr.total], xs = tickStep(xd[1] - xd[0], Math.max(4, Math.min(10, w / 80)));
     const fr = frame(w, h, {
       xd, yd, xt: tickList(xd[0], xd[1], xs), yt: tickList(yd[0], yd[1], st), xf: t => String(Math.round(t)), yf: t => (Math.abs(t) < 1e-9 ? '0' : sgn(t, dec)),
-      zero: true, xtitle: '区間の距離（m）', aria: '中央ラインに対するタイム差の推移',
-      bands: tr.corners.map(k => ({ x0: k.s0, x1: k.s1, label: M.cornerNo(k.no) }))
+      zero: true, marks: false, xtitle: '区間の距離（m）', aria: '中央ラインに対するタイム差の推移',
+      bands: tr.corners.map(k => ({ x0: k.s0, x1: k.s1, no: k.no }))
     });
     const val = (id, i) => ds[id][i];
     return { html: lines(fr, tr, ids, selId, val, 'delta') + '</svg><div class="tip" id="delta-tip" hidden></div>', fr, xd, ids, val };
@@ -177,7 +221,7 @@ const SectionRender = (function () {
     const ds = deltaSeries(results, 'center', ids);
     return '<b>距離 ' + Math.round(tr.st[i]) + ' m</b>' + ids.map(id => {
       const s = seriesOf(id);
-      return '<div class="row"' + (id === selId ? ' style="font-weight:700"' : '') + '><span class="key" style="background:' + s.color + '"></span>' + s.name + '<span class="v">' + sgn(ds[id][i], 3) + ' 秒</span></div>';
+      return '<div class="row"' + (id === selId ? ' style="font-weight:700"' : '') + '>' + keyHtml(s) + '' + s.name + '<span class="v">' + sgn(ds[id][i], 3) + ' 秒</span></div>';
     }).join('');
   }
 
@@ -190,18 +234,26 @@ const SectionRender = (function () {
     if (k) return M.cornerLabel(k) + ' の ' + Math.round((i - k.i0) / Math.max(1, k.i1 - k.i0) * 100) + '% 地点';
     return '区間 ' + Math.round(tr.st[i]).toLocaleString('en-US') + ' m 地点';
   }
+  /* 今いる場所の1行（スクラブの横）。コーナー内は「◇7 右 R7 の 40%」、外は「区間 1,234 m」、続けて速度 kmh（km/h） */
+  function posHtml(tr, i, kmh) {
+    const k = cornerAt(tr, i);
+    const where = k
+      ? M.cornerDiamond(k.no) + '<span>' + (k.dir === 'L' ? '左' : '右') + ' R' + Math.round(k.rMin) + ' の <b class="num">' + Math.round((i - k.i0) / Math.max(1, k.i1 - k.i0) * 100) + '</b>%</span>'
+      : '<span>区間 <b class="num">' + Math.round(tr.st[i]).toLocaleString('en-US') + '</b> m</span>';
+    return where + '<span class="pos-v"><b class="num">' + Math.round(kmh) + '</b> km/h</span>';
+  }
   /* G-G 線図。sim = 選択中ラインの結果。戻り値 {html, cx, cy, k}（点は ggDot で置く） */
   function ggPlot(w, h, car, sim, color) {
     const gm = Math.ceil((car.mu + 0.3) * 2) / 2, rad = Math.max(0, Math.min(w, h) / 2 - 22), cx = w / 2, cy = h / 2, k = rad / gm, G = P.G;
     let s = '<svg viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="選択中のラインの前後Gと横Gの軌跡">';
-    for (let g = 0.5; g <= gm + 1e-9; g += 0.5) s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + g * k + '" fill="none" stroke="var(--grid)"/><text x="' + (cx + 3) + '" y="' + (cy - g * k + 11) + '">' + g.toFixed(1) + ' G</text>';
-    s += '<line x1="' + (cx - rad) + '" x2="' + (cx + rad) + '" y1="' + cy + '" y2="' + cy + '" stroke="var(--axis)"/><line x1="' + cx + '" x2="' + cx + '" y1="' + (cy - rad) + '" y2="' + (cy + rad) + '" stroke="var(--axis)"/>';
+    for (let g = 0.5; g <= gm + 1e-9; g += 0.5) s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + g * k + '" fill="none" stroke="var(--rule)"/><text x="' + (cx + 3) + '" y="' + (cy - g * k + 11) + '">' + g.toFixed(1) + ' G</text>';
+    s += '<line x1="' + (cx - rad) + '" x2="' + (cx + rad) + '" y1="' + cy + '" y2="' + cy + '" stroke="var(--line-type)"/><line x1="' + cx + '" x2="' + cx + '" y1="' + (cy - rad) + '" y2="' + (cy + rad) + '" stroke="var(--line-type)"/>';
     s += '<text class="jp" x="' + cx + '" y="' + (cy - rad - 6) + '" text-anchor="middle">加速</text><text class="jp" x="' + cx + '" y="' + (cy + rad + 15) + '" text-anchor="middle">減速</text>';
     s += '<text class="jp" x="' + (cx - rad - 4) + '" y="' + (cy - 5) + '" text-anchor="start">左</text><text class="jp" x="' + (cx + rad + 4) + '" y="' + (cy - 5) + '" text-anchor="end">右</text>';
     const N = sim.v.length, stride = Math.max(1, Math.floor(N / 1500)), p = [];
     for (let i = 0; i < N; i += stride) p.push((cx - sim.ay[i] / G * k).toFixed(1) + ',' + (cy - sim.ax[i] / G * k).toFixed(1));
     s += '<polyline points="' + p.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round"/>';
-    s += '<circle id="ggdot" r="5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/></svg>';
+    s += '<circle id="ggdot" r="5" fill="var(--strong)" stroke="var(--face)" stroke-width="2"/></svg>';
     return { html: s, cx, cy, k };
   }
   /* 位置 i の G-G 図上の点 {x, y} */
@@ -214,23 +266,23 @@ const SectionRender = (function () {
     const roll = car.rollGrad * ay / G, pitch = car.pitchGrad * ax / G, EX = 4;
     const tire = (x, y, idx, anchor) => {
       const ratio = clampI(kg[idx] / full, 0, 1);
-      return '<rect x="' + x + '" y="' + y + '" width="15" height="30" rx="4" fill="var(--s1)" fill-opacity="' + (0.10 + 0.90 * ratio).toFixed(2) + '" stroke="var(--ink2)"/>' +
+      return '<rect x="' + x + '" y="' + y + '" width="15" height="30" rx="4" fill="var(--text)" fill-opacity="' + (0.10 + 0.90 * ratio).toFixed(2) + '" stroke="var(--text)"/>' +
         '<text class="strong" x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 16) + '" text-anchor="' + anchor + '" style="font-size:14px">' + kg[idx].toFixed(0) + '</text>' +
         '<text x="' + (anchor === 'end' ? x - 6 : x + 21) + '" y="' + (y + 28) + '" text-anchor="' + anchor + '">kg</text>';
     };
     let s = '<svg viewBox="0 0 330 182" role="img" aria-label="4輪の荷重とロール・ピッチの様子" style="display:block;width:100%;height:auto;max-width:420px">';
-    s += '<rect x="62" y="26" width="56" height="124" rx="16" fill="none" stroke="var(--axis)" stroke-width="1.5"/><path d="M72 62 Q90 50 108 62" fill="none" stroke="var(--axis)" stroke-width="1.5"/>';
+    s += '<rect x="62" y="26" width="56" height="124" rx="16" fill="none" stroke="var(--line-type)" stroke-width="1.5"/><path d="M72 62 Q90 50 108 62" fill="none" stroke="var(--line-type)" stroke-width="1.5"/>';
     s += '<text class="jp" x="90" y="16" text-anchor="middle">前</text>';
     s += tire(44, 36, 0, 'end') + tire(121, 36, 1, 'start') + tire(44, 110, 2, 'end') + tire(121, 110, 3, 'start');
     s += '<text class="jp" x="90" y="174" text-anchor="middle">4輪の荷重</text>';
     /* 後ろから見た図（ロール） */
     s += '<text class="jp ink" x="255" y="16" text-anchor="middle">ロール ' + Math.abs(roll).toFixed(1) + '°' + (roll > 0.05 ? ' 右へ' : roll < -0.05 ? ' 左へ' : '') + '</text>';
-    s += '<line x1="196" x2="314" y1="78" y2="78" stroke="var(--axis)"/><rect x="206" y="60" width="11" height="18" rx="3" fill="var(--ink2)"/><rect x="293" y="60" width="11" height="18" rx="3" fill="var(--ink2)"/>';
-    s += '<g transform="rotate(' + (roll * EX).toFixed(2) + ' 255 72)"><rect x="214" y="34" width="82" height="30" rx="8" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><rect x="230" y="26" width="50" height="12" rx="5" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/></g>';
+    s += '<line x1="196" x2="314" y1="78" y2="78" stroke="var(--line-type)"/><rect x="206" y="60" width="11" height="18" rx="3" fill="var(--text)"/><rect x="293" y="60" width="11" height="18" rx="3" fill="var(--text)"/>';
+    s += '<g transform="rotate(' + (roll * EX).toFixed(2) + ' 255 72)"><rect x="214" y="34" width="82" height="30" rx="8" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5"/><rect x="230" y="26" width="50" height="12" rx="5" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5"/></g>';
     /* 横から見た図（ピッチ）: 右が前 */
     s += '<text class="jp ink" x="255" y="106" text-anchor="middle">ピッチ ' + Math.abs(pitch).toFixed(1) + '°' + (pitch < -0.05 ? ' 前下がり' : pitch > 0.05 ? ' 後ろ下がり' : '') + '</text>';
-    s += '<line x1="196" x2="314" y1="166" y2="166" stroke="var(--axis)"/><circle cx="218" cy="157" r="9" fill="var(--ink2)"/><circle cx="290" cy="157" r="9" fill="var(--ink2)"/>';
-    s += '<g transform="rotate(' + (-pitch * EX).toFixed(2) + ' 254 150)"><rect x="200" y="132" width="108" height="20" rx="7" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><path d="M226 132 L236 118 L272 118 L286 132" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/></g>';
+    s += '<line x1="196" x2="314" y1="166" y2="166" stroke="var(--line-type)"/><circle cx="218" cy="157" r="9" fill="var(--text)"/><circle cx="290" cy="157" r="9" fill="var(--text)"/>';
+    s += '<g transform="rotate(' + (-pitch * EX).toFixed(2) + ' 254 150)"><rect x="200" y="132" width="108" height="20" rx="7" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5"/><path d="M226 132 L236 118 L272 118 L286 132" fill="var(--face)" stroke="var(--strong)" stroke-width="1.5" stroke-linejoin="round"/></g>';
     s += '<text class="jp" x="318" y="146" text-anchor="middle">前</text></svg>';
     const meter = (label, u) => '<div class="meter"><span>' + label + '</span><span class="track"><span class="fill' + (u >= 0.985 ? ' lim' : '') + '" style="display:block;width:' + clampI(u * 100, 0, 100).toFixed(0) + '%"></span></span><span class="val">' + (u * 100).toFixed(0) + '%' + (u >= 0.985 ? ' 限界' : '') + '</span></div>';
     return '<div style="display:grid;gap:12px">' +
@@ -241,7 +293,7 @@ const SectionRender = (function () {
       '<p class="sub">ロールとピッチの図は、傾きを ' + EX + ' 倍に誇張しています。</p></div>';
   }
 
-  return { SERIES, seriesOf, sgn, clampI, verdictInfo, verdictText, verdictHtml, legendHtml, cornerLinkUrl, tableHtml, tickStep, tickList, frame, speedPlot, tipHtml, deltaSeries, deltaPlot, deltaTipHtml, cornerAt, posText, ggPlot, ggDot, stateHtml };
+  return { SERIES, seriesOf, sgn, clampI, keyHtml, verdictInfo, verdictText, verdictHtml, plateHtml, legendHtml, cornerLinkUrl, tableHtml, tickStep, tickList, frame, speedPlot, tipHtml, deltaSeries, deltaPlot, deltaTipHtml, cornerAt, posText, posHtml, ggPlot, ggDot, stateHtml };
 })();
 
 if (typeof module !== 'undefined') module.exports = SectionRender;

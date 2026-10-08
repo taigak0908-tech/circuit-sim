@@ -9,6 +9,9 @@ const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 const FETCH_TIMEOUT = 15000;   // ms。経路・OSM タグの取得はこれ以上待たない
 const TILES = {
   osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors', maxZoom: 19 },
+  /* 夜の「地図」。CARTO の暗い地図は鍵なしでは「API KEY REQUIRED」の画像しか返さなくなったため（2026-10 確認）、
+     OSM 標準のタイルを CSS のフィルタ（.tiles-night、section.html）で暗くして使う。鍵は要らない */
+  dark: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors', maxZoom: 19, className: 'tiles-night' },
   aerial: { url: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', attribution: '国土地理院', maxNativeZoom: 18, maxZoom: 19 }   // 18 を超えたら 18 のタイルを拡大して使う
 };
 
@@ -105,21 +108,35 @@ function trackToLatLngs(tr, n) {
 /* コーナー番号の丸数字（①〜⑳、21 以上は (21)） */
 function _cornerNo(no) { return no >= 1 && no <= 20 ? String.fromCharCode(0x2460 + no - 1) : '(' + no + ')'; }
 
-/* コーナーの表示名。例: ③左R22。withAng=true で「 90°」を付ける（地図ラベル・表で使う） */
+/* コーナーの表示名。例: ③左R22。withAng=true で「 90°」を付ける（文中・選択肢で使う） */
 function cornerLabel(c, withAng) {
   return _cornerNo(c.no) + (c.dir === 'L' ? '左' : '右') + 'R' + Math.round(c.rMin) + (withAng ? ' ' + Math.round(c.angDeg) + '°' : '');
 }
 
-/* 地図のズームがこれ未満なら、コーナーのラベルは丸数字だけにする（密集したコーナーで全文が重なるため） */
+/* ひし形の標識の横に添える文。例: 右 R38 90°（番号はひし形の中に書くので入れない） */
+function cornerText(c) {
+  return (c.dir === 'L' ? '左' : '右') + ' R' + Math.round(c.rMin) + ' ' + Math.round(c.angDeg) + '°';
+}
+
+/* カーブ番号の警戒標識（黄色いひし形）の HTML。見た目は css/theme.css の .dia */
+function cornerDiamond(no) { return '<span class="dia"><span>' + no + '</span></span>'; }
+
+/* 地図のズームがこれ未満なら、コーナーのラベルはひし形の番号だけにする（密集したコーナーで文が重なるため） */
 const CORNER_FULL_ZOOM = 16;
 
-/* 地図に出すコーナーのラベル。zoom が CORNER_FULL_ZOOM 以上なら全文（①右R38 90°）、未満なら丸数字だけ（①） */
-function cornerMapLabel(c, zoom) { return zoom >= CORNER_FULL_ZOOM ? cornerLabel(c, true) : _cornerNo(c.no); }
+/* 地図でひし形の横に添える文。zoom が CORNER_FULL_ZOOM 以上なら「右 R38 90°」、未満なら空（番号だけ） */
+function cornerMapLabel(c, zoom) { return zoom >= CORNER_FULL_ZOOM ? cornerText(c) : ''; }
+
+/* CSS 変数の実際の色（Leaflet は var() を使えないため、描くたびに読む。昼夜の切替に追従する） */
+function _cssVar(name, fallback) {
+  try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback; } catch (e) { return fallback; }
+}
+const _isNight = () => typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') !== 'day';
 
 /* 地図を作る。el = 地図を入れる要素（またはその id）。戻り値のメソッドで操作する */
 function createMap(el) {
   const map = L.map(el, { zoomControl: true });
-  let base = null;
+  let base = null, baseName = 'osm';
   const routeLayer = L.layerGroup().addTo(map);
   const markerLayer = L.layerGroup().addTo(map);
   const cornerLayer = L.layerGroup().addTo(map);
@@ -127,16 +144,26 @@ function createMap(el) {
   const measureLayer = L.layerGroup().addTo(map);
   let carMarker = null, routeLine = null;
 
+  /* 下地のタイル。name は 'osm'（地図）か 'aerial'（航空写真）。「地図」は夜なら CARTO の暗い地図、昼なら OSM 標準 */
   function setBase(name) {
-    const t = TILES[name] || TILES.osm;
+    baseName = TILES[name] ? name : 'osm';
+    const t = baseName === 'osm' && _isNight() ? TILES.dark : TILES[baseName];
     if (base) map.removeLayer(base);
-    base = L.tileLayer(t.url, { attribution: t.attribution, maxZoom: t.maxZoom, maxNativeZoom: t.maxNativeZoom || t.maxZoom }).addTo(map);
+    const opt = { attribution: t.attribution, maxZoom: t.maxZoom, maxNativeZoom: t.maxNativeZoom || t.maxZoom };
+    if (t.className) opt.className = t.className;
+    base = L.tileLayer(t.url, opt).addTo(map);
     base.bringToBack();
   }
+  /* 昼夜を切り替えたあとに呼ぶ: タイルと道路の帯の色を取り直す（ラインは呼び出し側が drawLines し直す） */
+  function refreshTheme() {
+    setBase(baseName);
+    if (routeLine) routeLine.setStyle({ color: _cssVar('--road', '#454B51') });
+  }
+  /* 経路は「道路の帯」として太く敷く（その上に各ラインを描く） */
   function setRoute(latlngs) {
     routeLayer.clearLayers(); routeLine = null;
     if (!latlngs || latlngs.length < 2) return;
-    routeLine = L.polyline(latlngs.map(p => [p.lat, p.lng]), { color: '#2a78d6', weight: 5, opacity: .8, interactive: false }).addTo(routeLayer);
+    routeLine = L.polyline(latlngs.map(p => [p.lat, p.lng]), { color: _cssVar('--road', '#454B51'), weight: 14, opacity: .95, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(routeLayer);
   }
   function _mk(p, cls, text) {
     return L.marker([p.lat, p.lng], { interactive: false, keyboard: false,
@@ -160,31 +187,34 @@ function createMap(el) {
       const p = _xyToLatLng(tr.cx[mid], tr.cy[mid], tr.origin);
       const text = cornerMapLabel(c, z);
       L.marker([p.lat, p.lng], { interactive: false, keyboard: false, zIndexOffset: 500,
-        icon: L.divIcon({ className: 'corner-wrap', html: '<span class="corner-lbl">' + text + '</span>', iconSize: [0, 0] }) }).addTo(cornerLayer);
+        icon: L.divIcon({ className: 'corner-wrap', html: '<span class="corner-lbl">' + cornerDiamond(c.no) + (text ? '<span class="corner-t">' + text + '</span>' : '') + '</span>', iconSize: [0, 0] }) }).addTo(cornerLayer);
     });
   }
   function drawCorners(corners, tr) {
     cornersShown = corners && corners.length ? corners : null; cornersTr = tr || null;   // 空・null で前のコーナーを消す
     _renderCorners();
   }
+  /* lines = [{latlngs, color, weight, dash, caseColor}]。dash は線種（例 '6 3'）、caseColor があれば下に縁取りを敷く（昼の黄色の線） */
   function drawLines(lines) {
     linesLayer.clearLayers();
     (lines || []).forEach(l => {
-      L.polyline(l.latlngs.map(p => [p.lat, p.lng]), { color: l.color, weight: l.weight || 3, opacity: .95, interactive: false }).addTo(linesLayer);
+      const ll = l.latlngs.map(p => [p.lat, p.lng]), w = l.weight || 3;
+      if (l.caseColor && l.caseColor !== 'transparent') L.polyline(ll, { color: l.caseColor, weight: w + 3, opacity: 1, interactive: false }).addTo(linesLayer);
+      L.polyline(ll, { color: l.color, weight: w, opacity: 1, dashArray: l.dash || null, lineCap: l.dash ? 'butt' : 'round', interactive: false }).addTo(linesLayer);
     });
   }
   function clearLines() { linesLayer.clearLayers(); }
   function setCar(p) {
     if (carMarker) { map.removeLayer(carMarker); carMarker = null; }
-    if (p) carMarker = L.circleMarker([p.lat, p.lng], { radius: 7, color: '#ffffff', weight: 2, fillColor: '#d03b3b', fillOpacity: 1, interactive: false }).addTo(map);
+    if (p) carMarker = L.circleMarker([p.lat, p.lng], { radius: 7, color: _cssVar('--ground', '#24282C'), weight: 3, fillColor: _cssVar('--strong', '#ffffff'), fillOpacity: 1, interactive: false }).addTo(map);
   }
   /* 幅の計測用の一時描画。p1 だけなら仮の点、p1 と p2 なら点と線。p1 が null なら消す */
   function measureLine(p1, p2) {
     measureLayer.clearLayers();
     if (!p1) return;
-    const dot = p => L.circleMarker([p.lat, p.lng], { radius: 5, color: '#ffffff', weight: 2, fillColor: '#eda100', fillOpacity: 1, interactive: false }).addTo(measureLayer);
+    const dot = p => L.circleMarker([p.lat, p.lng], { radius: 5, color: '#000000', weight: 2, fillColor: '#ffffff', fillOpacity: 1, interactive: false }).addTo(measureLayer);
     dot(p1);
-    if (p2) { dot(p2); L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], { color: '#eda100', weight: 3, interactive: false }).addTo(measureLayer); }
+    if (p2) { L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], { color: '#ffffff', weight: 3, dashArray: '6 3', lineCap: 'butt', interactive: false }).addTo(measureLayer); dot(p2); }
   }
   function onMapClick(cb) { map.on('click', e => cb({ lat: e.latlng.lat, lng: e.latlng.lng })); }
   /* 地図を経路全体に合わせる。アニメーションは使わない（アニメーションは requestAnimationFrame 頼みで、
@@ -204,7 +234,7 @@ function createMap(el) {
   setBase('osm');
   map.on('moveend', saveView);
   map.on('zoomend', () => { if (cornersShown) _renderCorners(); });   // ズームでラベルの詳しさを切り替える
-  return { map, setBase, setRoute, setMarkers, drawCorners, drawLines, clearLines, setCar, measureLine, onMapClick, fitRoute, saveView, restoreView };
+  return { map, setBase, refreshTheme, setRoute, setMarkers, drawCorners, drawLines, clearLines, setCar, measureLine, onMapClick, fitRoute, saveView, restoreView };
 }
 
-if (typeof module !== 'undefined') module.exports = { fetchRoute, fetchOsmWidth, osmWidthFromElements, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo, cornerMapLabel, CORNER_FULL_ZOOM };
+if (typeof module !== 'undefined') module.exports = { fetchRoute, fetchOsmWidth, osmWidthFromElements, manualRoute, trackToLatLngs, createMap, cornerLabel, cornerNo: _cornerNo, cornerText, cornerDiamond, cornerMapLabel, CORNER_FULL_ZOOM };
